@@ -1,0 +1,47 @@
+name: tailoring_web
+description: A professional tailoring shop management SaaS application
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.8.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # HTTP Client
+  dio: ^5.4.0
+  
+  # JSON Serialization
+  json_annotation: ^4.9.0
+  
+  # State Management
+  provider: ^6.1.1
+  
+  # UI
+  cupertino_icons: ^1.0.2
+  # NEW - Add this line for storing tokens
+  shared_preferences: ^2.2.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  
+  # Linting
+  flutter_lints: ^3.0.0
+
+  intl: ^0.18.1
+
+  http: ^1.1.0        # ← For API calls
+  qr_flutter: ^4.1.0  # ← For QR code display
+
+  image_picker: ^1.0.7
+  image_picker_web: ^3.1.1
+  
+  # Code Generation
+  build_runner: ^2.4.7
+  json_serializable: ^6.7.1
+
+flutter:
+  uses-material-design: true

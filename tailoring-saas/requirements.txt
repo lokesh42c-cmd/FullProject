@@ -1,0 +1,40 @@
+# Core Framework
+Django==5.0
+djangorestframework==3.14.0
+djangorestframework-simplejwt==5.3.1
+
+# Database (for future PostgreSQL support)
+
+
+# Image Handling
+Pillow==10.2.0
+
+# PDF Generation
+reportlab==4.0.9
+
+# QR Code Generation
+qrcode[pil]==7.4.2
+
+# Excel Export (for reports)
+openpyxl==3.1.2
+
+# Date/Time Utilities
+python-dateutil==2.8.2
+
+# Environment Variables
+python-dotenv==1.0.0
+
+# CORS (for Flutter app)
+django-cors-headers==4.3.1
+
+# Filtering & Pagination
+django-filter==23.5
+
+# Phone Number Validation
+phonenumbers==8.13.29
+
+# Slug Generation
+python-slugify==8.0.4
+
+# Timezone Support
+pytz==2024.1
