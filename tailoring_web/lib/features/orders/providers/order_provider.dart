@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import '../models/order.dart';
 import '../services/order_service.dart';
@@ -266,13 +267,18 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
-  /// Upload reference photo
+  /// Upload reference photo (web compatible)
   Future<Map<String, dynamic>?> uploadReferencePhoto(
     int orderId,
-    String filePath,
+    Uint8List imageBytes,
+    String fileName,
   ) async {
     try {
-      return await _orderService.uploadReferencePhoto(orderId, filePath);
+      return await _orderService.uploadReferencePhoto(
+        orderId,
+        imageBytes,
+        fileName,
+      );
     } on ApiException catch (e) {
       _errorMessage = e.message;
       notifyListeners();

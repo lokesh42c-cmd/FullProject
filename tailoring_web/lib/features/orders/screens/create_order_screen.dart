@@ -12,6 +12,7 @@ import '../widgets/order_items_table.dart';
 import '../widgets/order_summary_panel.dart';
 import '../widgets/reference_photos_section.dart';
 
+/// Create Order Screen - Final Version
 class CreateOrderScreen extends StatefulWidget {
   final Customer? preSelectedCustomer;
   const CreateOrderScreen({super.key, this.preSelectedCustomer});
@@ -47,7 +48,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     super.dispose();
   }
 
-  // FIX 2: Standardized Calculation Logic for Table & Summary
   void _onTaxModeChanged(bool isTaxInclusive) {
     setState(() {
       _isTaxInclusive = isTaxInclusive;
@@ -57,22 +57,15 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   Future<void> _saveOrder() async {
     if (_selectedCustomer == null || _orderItems.isEmpty) return;
     setState(() => _isLoading = true);
-    try {
-      double totalTax = 0.0;
-      double grandTotal = 0.0;
-      double subtotal = 0.0;
 
+    try {
+      double grandTotal = 0.0;
       for (var item in _orderItems) {
         double lineNet = (item.quantity * item.unitPrice) - item.discount;
         if (_isTaxInclusive) {
-          double base = lineNet / (1 + (item.taxAmount / 100));
-          subtotal += base;
-          totalTax += (lineNet - base);
           grandTotal += lineNet;
         } else {
-          double tax = lineNet * (item.taxAmount / 100);
-          subtotal += lineNet;
-          totalTax += tax;
+          double tax = lineNet * (item.taxPercentage / 100);
           grandTotal += (lineNet + tax);
         }
       }
@@ -93,8 +86,30 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       final createdOrder = await context.read<OrderProvider>().createOrder(
         order,
       );
-      if (createdOrder != null && mounted) {
-        Navigator.pop(context, true);
+
+      if (createdOrder != null) {
+        // Upload reference photos if any (web compatible - uses bytes)
+        if (_referencePhotos.isNotEmpty && createdOrder.id != null) {
+          for (final photo in _referencePhotos) {
+            if (photo.imageBytes != null) {
+              await context.read<OrderProvider>().uploadReferencePhoto(
+                createdOrder.id!,
+                photo.imageBytes!,
+                photo.fileName ?? 'photo.jpg',
+              );
+            }
+          }
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Order created successfully'),
+              backgroundColor: AppTheme.success,
+            ),
+          );
+          Navigator.pop(context, true);
+        }
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -158,8 +173,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 const SizedBox(height: AppTheme.space4),
                 _buildItemsSection(),
                 const SizedBox(height: AppTheme.space4),
-                ReferencePhotosSection(
-                  photos: _referencePhotos,
+                ReferencePhotosPicker(
+                  initialPhotos: _referencePhotos,
                   onPhotosChanged: (photos) => setState(() {
                     _referencePhotos.clear();
                     _referencePhotos.addAll(photos);
@@ -171,7 +186,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             ),
           ),
         ),
-        // FIX 3: Unified naming via OrderSummaryPanel
         OrderSummaryPanel(
           items: _orderItems,
           isTaxInclusive: _isTaxInclusive,
@@ -386,7 +400,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             onItemsChanged: (items) => setState(() {
               _orderItems.clear();
               _orderItems.addAll(items);
-              // Requirement 1 & 2: The table widget should handle internal search clearing
             }),
             isTaxInclusive: _isTaxInclusive,
           ),

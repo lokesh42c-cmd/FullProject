@@ -1,5 +1,5 @@
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
-
 import 'package:tailoring_web/core/api/api_client.dart';
 import '../models/order.dart';
 
@@ -116,14 +116,15 @@ class OrderService {
     }
   }
 
-  /// Upload reference photo
+  /// Upload reference photo (web compatible - uses bytes)
   Future<Map<String, dynamic>> uploadReferencePhoto(
     int orderId,
-    String filePath,
+    Uint8List imageBytes,
+    String fileName,
   ) async {
     try {
       final formData = FormData.fromMap({
-        'photo': await MultipartFile.fromFile(filePath),
+        'photo': MultipartFile.fromBytes(imageBytes, filename: fileName),
       });
 
       final response = await _apiClient.post(
