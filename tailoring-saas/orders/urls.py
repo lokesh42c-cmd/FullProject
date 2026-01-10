@@ -13,6 +13,7 @@ router.register(r'customers', views.CustomerViewSet, basename='customer')
 router.register(r'orders', views.OrderViewSet, basename='order')
 router.register(r'order-items', views.OrderItemViewSet, basename='orderitem')
 router.register(r'items', views.ItemViewSet, basename='item')
+router.register(r'item-units', views.ItemUnitViewSet, basename='itemunit')
 
 app_name = 'orders'
 

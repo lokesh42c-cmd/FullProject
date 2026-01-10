@@ -1,4 +1,4 @@
-/// ItemUnit Model
+/// ItemUnit Model (Masters)
 /// Matches: masters.ItemUnit from backend
 class ItemUnit {
   final int? id;

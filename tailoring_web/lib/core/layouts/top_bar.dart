@@ -20,53 +20,7 @@ class TopBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          SizedBox(width: 8),
-
-          // Refresh button
-          IconButton(
-            icon: Icon(Icons.refresh, color: AppTheme.textSecondary, size: 20),
-            onPressed: () {
-              // Refresh action
-            },
-            tooltip: 'Refresh',
-            padding: EdgeInsets.all(8),
-            constraints: BoxConstraints(minWidth: 32, minHeight: 32),
-          ),
-
-          SizedBox(width: 8),
-
-          // Search bar (Zoho style)
-          Container(
-            width: 300,
-            height: 34,
-            decoration: BoxDecoration(
-              color: AppTheme.backgroundGray,
-              borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
-              border: Border.all(color: AppTheme.borderLight, width: 1),
-            ),
-            child: Row(
-              children: [
-                SizedBox(width: 10),
-                Icon(Icons.search, color: AppTheme.textMuted, size: 16),
-                SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    style: AppTheme.bodyMedium,
-                    decoration: InputDecoration(
-                      hintText: 'Search...',
-                      hintStyle: AppTheme.bodySmall.copyWith(
-                        color: AppTheme.textMuted,
-                      ),
-                      border: InputBorder.none,
-                      isDense: true,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                ),
-                SizedBox(width: 10),
-              ],
-            ),
-          ),
+          SizedBox(width: 16),
 
           Spacer(),
 
@@ -110,10 +64,11 @@ class TopBar extends StatelessWidget {
             child: IconButton(
               icon: Icon(Icons.add, color: Colors.white, size: 18),
               onPressed: () {
-                // Quick add
+                // Quick add functionality
               },
               padding: EdgeInsets.zero,
               constraints: BoxConstraints(),
+              tooltip: 'Quick Add',
             ),
           ),
 
@@ -126,7 +81,9 @@ class TopBar extends StatelessWidget {
               color: AppTheme.textSecondary,
               size: 20,
             ),
-            onPressed: () {},
+            onPressed: () {
+              // Navigate to users/team page
+            },
             tooltip: 'People',
             padding: EdgeInsets.all(8),
             constraints: BoxConstraints(minWidth: 32, minHeight: 32),
@@ -141,7 +98,9 @@ class TopBar extends StatelessWidget {
                   color: AppTheme.textSecondary,
                   size: 20,
                 ),
-                onPressed: () {},
+                onPressed: () {
+                  // Show notifications
+                },
                 tooltip: 'Notifications',
                 padding: EdgeInsets.all(8),
                 constraints: BoxConstraints(minWidth: 32, minHeight: 32),
@@ -323,7 +282,9 @@ class TopBar extends StatelessWidget {
           // Apps menu (grid icon)
           IconButton(
             icon: Icon(Icons.apps, color: AppTheme.textSecondary, size: 20),
-            onPressed: () {},
+            onPressed: () {
+              // Show apps menu
+            },
             tooltip: 'Apps',
             padding: EdgeInsets.all(8),
             constraints: BoxConstraints(minWidth: 32, minHeight: 32),

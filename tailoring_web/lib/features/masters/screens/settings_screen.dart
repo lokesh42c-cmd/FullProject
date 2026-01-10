@@ -2,11 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:tailoring_web/core/layouts/main_layout.dart';
 import 'package:tailoring_web/core/theme/app_theme.dart';
 import '../widgets/general_settings_tab.dart';
+import '../widgets/item_unit_settings.dart';
 
 /// Settings Screen - Shop configuration
-///
-/// Simplified to just General Settings
-/// (Service Items moved to Items under Sales)
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
@@ -57,8 +55,22 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
 
-          // Content (General Settings only)
-          const Expanded(child: GeneralSettingsTab()),
+          // Content
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                children: [
+                  // Item Units Section
+                  ItemUnitSettings(),
+                  const SizedBox(height: 24),
+
+                  // General Settings
+                  const GeneralSettingsTab(),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );

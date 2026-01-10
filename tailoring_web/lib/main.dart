@@ -17,11 +17,14 @@ import 'package:tailoring_web/features/items/screens/item_list_screen.dart';
 import 'features/items/providers/item_unit_provider.dart';
 import 'features/items/services/item_unit_service.dart';
 import 'package:tailoring_web/features/items/services/item_service.dart';
-import 'package:tailoring_web/features/settings/screens/settings_screen.dart';
+import 'package:tailoring_web/features/masters/screens/settings_screen.dart';
+import 'package:tailoring_web/features/masters/providers/masters_provider.dart';
+
 import 'package:tailoring_web/features/orders/providers/order_provider.dart';
 import 'package:tailoring_web/features/orders/services/order_service.dart';
 import 'package:tailoring_web/features/orders/screens/order_list_screen.dart';
 import 'package:tailoring_web/features/orders/screens/order_detail_screen.dart';
+import 'package:tailoring_web/features/orders/screens/create_order_screen.dart';
 import 'package:tailoring_web/features/customer_payments/providers/payment_provider.dart';
 import 'package:tailoring_web/features/customer_payments/services/payment_service.dart';
 import 'package:tailoring_web/features/customer_payments/screens/payments_list_screen.dart';
@@ -58,15 +61,17 @@ class TailoringWebApp extends StatelessWidget {
         // ChangeNotifierProvider(
         //   create: (_) => CustomerDetailProvider(apiClient),
         // ),
-        ChangeNotifierProvider(
-          create: (_) => OrderProvider(OrderService(apiClient)),
-        ),
-        ChangeNotifierProvider(
-          create: (_) => ItemProvider(ItemService(apiClient)),
-        ),
-        ChangeNotifierProvider(
-          create: (_) => ItemUnitProvider(ItemUnitService(apiClient)),
-        ),
+        ChangeNotifierProvider(create: (_) => OrderProvider()),
+        ChangeNotifierProvider(create: (_) => ItemProvider()),
+        ChangeNotifierProvider(create: (_) => MastersProvider()),
+        // ChangeNotifierProvider(//   create: (_) => OrderProvider(OrderService(apiClient)),
+        // ),
+        // ChangeNotifierProvider(
+        //   create: (_) => ItemProvider(ItemService(apiClient)),
+        // ),
+        // ChangeNotifierProvider(
+        //   create: (_) => ItemUnitProvider(ItemUnitService(apiClient)),
+        // ),
         ChangeNotifierProvider(
           create: (_) => PaymentProvider(PaymentService(apiClient)),
         ),
@@ -112,7 +117,7 @@ class TailoringWebApp extends StatelessWidget {
                     as Map<String, dynamic>?;
             return CustomerDetailScreen(customerId: args?['customerId'] as int);
           },
-          // '/orders': (context) => const OrderListScreen(),
+          '/orders': (context) => const OrderListScreen(),
           '/orders/detail': (context) {
             final orderId = ModalRoute.of(context)!.settings.arguments as int;
             return OrderDetailScreen(orderId: orderId);

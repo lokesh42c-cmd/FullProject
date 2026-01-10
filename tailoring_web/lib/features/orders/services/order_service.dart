@@ -1,84 +1,148 @@
 import 'package:dio/dio.dart';
+
 import 'package:tailoring_web/core/api/api_client.dart';
 import '../models/order.dart';
 
 /// Order Service
-///
-/// BACKWARD COMPATIBLE
-/// - Keeps existing method names used by OrderProvider
-/// - Fixes `/api/api` issue
-/// - Does NOT break old code
+/// Handles all Order-related API calls
 class OrderService {
   final ApiClient _apiClient;
 
-  OrderService(this._apiClient);
+  OrderService({ApiClient? apiClient}) : _apiClient = apiClient ?? ApiClient();
 
-  // =========================================================
-  // ORDERS LIST (USED BY OrderProvider.fetchOrders)
-  // =========================================================
-  Future<Map<String, dynamic>> fetchOrders({
-    int page = 1,
+  /// Fetch all orders with optional filters
+  Future<List<Order>> fetchOrders({
     String? search,
-    String? status,
+    String? orderStatus,
+    String? deliveryStatus,
+    bool? isLocked,
     int? customerId,
   }) async {
-    final response = await _apiClient.get(
-      '/orders/orders/',
-      queryParameters: {
-        'page': page,
-        if (search != null && search.isNotEmpty) 'search': search,
-        if (status != null && status.isNotEmpty) 'status': status,
-        if (customerId != null) 'customer_id': customerId,
-      },
-    );
+    try {
+      final queryParams = <String, dynamic>{};
 
-    return response.data as Map<String, dynamic>;
+      if (search != null && search.isNotEmpty) {
+        queryParams['search'] = search;
+      }
+      if (orderStatus != null) {
+        queryParams['order_status'] = orderStatus;
+      }
+      if (deliveryStatus != null) {
+        queryParams['delivery_status'] = deliveryStatus;
+      }
+      if (isLocked != null) {
+        queryParams['is_locked'] = isLocked;
+      }
+      if (customerId != null) {
+        queryParams['customer'] = customerId;
+      }
+
+      final response = await _apiClient.get(
+        'orders/orders/',
+        queryParameters: queryParams,
+      );
+
+      final List<dynamic> data = response.data as List<dynamic>;
+      return data
+          .map((json) => Order.fromJson(json as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      rethrow;
+    }
   }
 
-  // =========================================================
-  // SINGLE ORDER (USED BY OrderProvider.fetchOrder)
-  // =========================================================
-  Future<Order> fetchOrder(int orderId) async {
-    final response = await _apiClient.get('/orders/orders/$orderId/');
-
-    return Order.fromJson(response.data);
+  /// Fetch single order by ID
+  Future<Order> fetchOrderById(int id) async {
+    try {
+      final response = await _apiClient.get('orders/orders/$id/');
+      return Order.fromJson(response.data as Map<String, dynamic>);
+    } catch (e) {
+      rethrow;
+    }
   }
 
-  // =========================================================
-  // CREATE ORDER
-  // =========================================================
-  Future<Order> createOrder(Map<String, dynamic> payload) async {
-    final response = await _apiClient.post('/orders/orders/', data: payload);
-
-    return Order.fromJson(response.data);
+  /// Create new order
+  Future<Order> createOrder(Order order) async {
+    try {
+      final response = await _apiClient.post(
+        'orders/orders/',
+        data: order.toJson(),
+      );
+      return Order.fromJson(response.data as Map<String, dynamic>);
+    } catch (e) {
+      rethrow;
+    }
   }
 
-  // =========================================================
-  // UPDATE ORDER (EDIT ORDER)
-  // =========================================================
-  Future<Order> updateOrder(int orderId, Map<String, dynamic> payload) async {
-    final response = await _apiClient.put(
-      '/orders/orders/$orderId/',
-      data: payload,
-    );
-
-    return Order.fromJson(response.data);
+  /// Update existing order
+  Future<Order> updateOrder(int id, Order order) async {
+    try {
+      final response = await _apiClient.put(
+        'orders/orders/$id/',
+        data: order.toJson(),
+      );
+      return Order.fromJson(response.data as Map<String, dynamic>);
+    } catch (e) {
+      rethrow;
+    }
   }
 
-  // =========================================================
-  // REFERENCE PHOTOS UPLOAD (OPTIONAL / POST-CREATE)
-  // =========================================================
-  Future<void> uploadReferencePhotos(
+  /// Delete order
+  Future<void> deleteOrder(int id) async {
+    try {
+      await _apiClient.delete('orders/orders/$id/');
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Lock order
+  Future<Order> lockOrder(int id) async {
+    try {
+      final response = await _apiClient.post('orders/orders/$id/lock/');
+      return Order.fromJson(response.data as Map<String, dynamic>);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Unlock order
+  Future<Order> unlockOrder(int id) async {
+    try {
+      final response = await _apiClient.post('orders/orders/$id/unlock/');
+      return Order.fromJson(response.data as Map<String, dynamic>);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Upload reference photo
+  Future<Map<String, dynamic>> uploadReferencePhoto(
     int orderId,
-    List<MultipartFile> files,
+    String filePath,
   ) async {
-    if (files.isEmpty) return;
+    try {
+      final formData = FormData.fromMap({
+        'photo': await MultipartFile.fromFile(filePath),
+      });
 
-    final formData = FormData.fromMap({'photos': files});
+      final response = await _apiClient.post(
+        'orders/orders/$orderId/upload_photo/',
+        data: formData,
+      );
 
-    await _apiClient.post(
-      '/orders/orders/$orderId/reference-photos/',
-      data: formData,
-    );
+      return response.data as Map<String, dynamic>;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Delete reference photo
+  Future<void> deleteReferencePhoto(int orderId, int photoId) async {
+    try {
+      await _apiClient.delete('orders/orders/$orderId/delete_photo/$photoId/');
+    } catch (e) {
+      rethrow;
+    }
   }
 }

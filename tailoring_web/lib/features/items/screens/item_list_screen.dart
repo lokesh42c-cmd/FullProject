@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:tailoring_web/core/layouts/main_layout.dart';
-import 'package:tailoring_web/core/theme/app_theme.dart';
+import '../../../core/layouts/main_layout.dart';
+import '../../../core/theme/app_theme.dart';
 import '../providers/item_provider.dart';
 import '../models/item.dart';
 import '../widgets/add_edit_item_dialog.dart';
 
-/// Items List Screen
-///
-/// Shows all items (services and products) with filters
+/// Item List Screen
+/// Displays all items with filters
 class ItemListScreen extends StatefulWidget {
   const ItemListScreen({super.key});
 
@@ -51,18 +50,11 @@ class _ItemListScreenState extends State<ItemListScreen> {
             child: Row(
               children: [
                 const Text('Items', style: AppTheme.heading2),
-                const SizedBox(width: AppTheme.space2),
-                Text(
-                  'Services & Products for daily operations',
-                  style: AppTheme.bodySmall.copyWith(
-                    color: AppTheme.textSecondary,
-                  ),
-                ),
                 const Spacer(),
                 ElevatedButton.icon(
                   onPressed: () => _showAddItemDialog(),
                   icon: const Icon(Icons.add, size: 16),
-                  label: const Text('Add Item'),
+                  label: const Text('New Item'),
                 ),
               ],
             ),
@@ -106,11 +98,15 @@ class _ItemListScreenState extends State<ItemListScreen> {
                     borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
                   ),
                   child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String?>(
-                      value: provider.filterType,
+                    child: DropdownButton<String>(
+                      value: provider.filterItemType ?? 'ALL',
                       style: AppTheme.bodySmall,
+                      isDense: true,
                       items: const [
-                        DropdownMenuItem(value: null, child: Text('All Types')),
+                        DropdownMenuItem(
+                          value: 'ALL',
+                          child: Text('All Types'),
+                        ),
                         DropdownMenuItem(
                           value: 'SERVICE',
                           child: Text('Services'),
@@ -120,7 +116,12 @@ class _ItemListScreenState extends State<ItemListScreen> {
                           child: Text('Products'),
                         ),
                       ],
-                      onChanged: (value) => provider.setFilterType(value),
+                      onChanged: (value) {
+                        provider.setFilterItemType(
+                          value == 'ALL' ? null : value,
+                        );
+                        provider.fetchItems();
+                      },
                     ),
                   ),
                 ),
@@ -129,9 +130,10 @@ class _ItemListScreenState extends State<ItemListScreen> {
                 // Active filter
                 FilterChip(
                   label: const Text('Active Only'),
-                  selected: provider.filterActive == true,
+                  selected: provider.filterIsActive == true,
                   onSelected: (selected) {
-                    provider.setFilterActive(selected ? true : null);
+                    provider.setFilterIsActive(selected ? true : null);
+                    provider.fetchItems();
                   },
                 ),
               ],
@@ -142,9 +144,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
           Expanded(
             child: provider.isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : provider.errorMessage != null
-                ? Center(child: Text(provider.errorMessage!))
-                : provider.filteredItems.isEmpty
+                : provider.items.isEmpty
                 ? _buildEmptyState()
                 : _buildItemsTable(provider),
           ),
@@ -154,34 +154,32 @@ class _ItemListScreenState extends State<ItemListScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Container(
-      margin: const EdgeInsets.all(AppTheme.space5),
-      decoration: BoxDecoration(
-        color: AppTheme.backgroundWhite,
-        border: Border.all(color: AppTheme.borderLight),
-        borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
-      ),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.inventory_2_outlined,
-              size: 64,
-              color: AppTheme.textMuted,
-            ),
-            const SizedBox(height: AppTheme.space4),
-            Text(
-              'No items found',
-              style: AppTheme.bodyLarge.copyWith(color: AppTheme.textSecondary),
-            ),
-            const SizedBox(height: AppTheme.space2),
-            Text(
-              'Add your first service or product item',
-              style: AppTheme.bodySmall.copyWith(color: AppTheme.textMuted),
-            ),
-          ],
-        ),
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(
+            Icons.inventory_2_outlined,
+            size: 64,
+            color: AppTheme.textMuted,
+          ),
+          const SizedBox(height: AppTheme.space4),
+          Text(
+            'No items found',
+            style: AppTheme.heading3.copyWith(color: AppTheme.textSecondary),
+          ),
+          const SizedBox(height: AppTheme.space2),
+          Text(
+            'Create your first item to get started',
+            style: AppTheme.bodyMedium.copyWith(color: AppTheme.textMuted),
+          ),
+          const SizedBox(height: AppTheme.space5),
+          ElevatedButton.icon(
+            onPressed: () => _showAddItemDialog(),
+            icon: const Icon(Icons.add, size: 16),
+            label: const Text('New Item'),
+          ),
+        ],
       ),
     );
   }
@@ -202,13 +200,13 @@ class _ItemListScreenState extends State<ItemListScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               color: AppTheme.backgroundGrey,
               child: Row(
-                children: [
+                children: const [
                   Expanded(
                     flex: 3,
-                    child: Text('NAME', style: AppTheme.tableHeader),
+                    child: Text('ITEM NAME', style: AppTheme.tableHeader),
                   ),
                   Expanded(
-                    flex: 1,
+                    flex: 2,
                     child: Text('TYPE', style: AppTheme.tableHeader),
                   ),
                   Expanded(
@@ -216,19 +214,19 @@ class _ItemListScreenState extends State<ItemListScreen> {
                     child: Text('PRICE', style: AppTheme.tableHeader),
                   ),
                   Expanded(
-                    flex: 1,
-                    child: Text('TAX %', style: AppTheme.tableHeader),
+                    flex: 2,
+                    child: Text('STOCK', style: AppTheme.tableHeader),
                   ),
                   Expanded(
-                    flex: 1,
+                    flex: 2,
                     child: Text('UNIT', style: AppTheme.tableHeader),
                   ),
                   Expanded(
-                    flex: 1,
+                    flex: 2,
                     child: Text('STATUS', style: AppTheme.tableHeader),
                   ),
                   SizedBox(
-                    width: 120,
+                    width: 100,
                     child: Text('ACTIONS', style: AppTheme.tableHeader),
                   ),
                 ],
@@ -236,7 +234,7 @@ class _ItemListScreenState extends State<ItemListScreen> {
             ),
 
             // Table body
-            ...provider.filteredItems.map((item) {
+            ...provider.items.map((item) {
               return _buildItemRow(item, provider);
             }).toList(),
           ],
@@ -250,204 +248,195 @@ class _ItemListScreenState extends State<ItemListScreen> {
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: AppTheme.borderLight)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          children: [
-            // Name
-            Expanded(
-              flex: 3,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(item.name, style: AppTheme.bodyMedium),
-                  if (item.description != null && item.description!.isNotEmpty)
+      child: InkWell(
+        onTap: () => _showEditItemDialog(item),
+        hoverColor: AppTheme.backgroundGrey.withOpacity(0.5),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              // Item Name
+              Expanded(
+                flex: 3,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      item.description!,
-                      style: AppTheme.bodySmall.copyWith(
-                        color: AppTheme.textMuted,
+                      item.name,
+                      style: AppTheme.bodyMedium.copyWith(
+                        fontWeight: AppTheme.fontSemibold,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                ],
-              ),
-            ),
-
-            // Type
-            Expanded(
-              flex: 1,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: item.itemType == 'SERVICE'
-                      ? AppTheme.primaryBlue.withOpacity(0.1)
-                      : AppTheme.accentOrange.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
+                    if (item.description != null &&
+                        item.description!.isNotEmpty)
+                      Text(
+                        item.description!,
+                        style: AppTheme.bodySmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
                 ),
-                child: Text(
-                  item.typeDisplay,
-                  style: TextStyle(
+              ),
+
+              // Type
+              Expanded(
+                flex: 2,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  constraints: const BoxConstraints(maxWidth: 100),
+                  decoration: BoxDecoration(
                     color: item.itemType == 'SERVICE'
-                        ? AppTheme.primaryBlue
-                        : AppTheme.accentOrange,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
+                        ? AppTheme.info.withOpacity(0.1)
+                        : AppTheme.success.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
-
-            // Price
-            Expanded(
-              flex: 2,
-              child: Text(item.priceWithUnit, style: AppTheme.bodyMedium),
-            ),
-
-            // Tax
-            Expanded(
-              flex: 1,
-              child: Text(
-                '${item.taxPercent.toStringAsFixed(1)}%',
-                style: AppTheme.bodyMedium,
-              ),
-            ),
-
-            // Unit
-            Expanded(
-              flex: 1,
-              child: Text(item.unit?.code ?? '-', style: AppTheme.bodyMedium),
-            ),
-
-            // Status
-            Expanded(
-              flex: 1,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: item.isActive
-                      ? AppTheme.success.withOpacity(0.1)
-                      : AppTheme.textMuted.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  item.statusText,
-                  style: TextStyle(
-                    color: item.isActive
-                        ? AppTheme.success
-                        : AppTheme.textMuted,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
-
-            // Actions
-            SizedBox(
-              width: 120,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.edit, size: 18),
-                    onPressed: () => _showEditItemDialog(item),
-                    tooltip: 'Edit',
-                  ),
-                  IconButton(
-                    icon: Icon(
-                      item.isActive ? Icons.toggle_on : Icons.toggle_off,
-                      size: 18,
+                  child: Text(
+                    item.typeDisplay,
+                    style: TextStyle(
+                      color: item.itemType == 'SERVICE'
+                          ? AppTheme.info
+                          : AppTheme.success,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
                     ),
-                    onPressed: () => _toggleActive(item, provider),
-                    tooltip: item.isActive ? 'Deactivate' : 'Activate',
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.delete, size: 18),
-                    onPressed: () => _deleteItem(item, provider),
-                    tooltip: 'Delete',
-                  ),
-                ],
+                ),
               ),
-            ),
-          ],
+
+              // Price
+              Expanded(
+                flex: 2,
+                child: Text(item.priceWithUnit, style: AppTheme.bodyMedium),
+              ),
+
+              // Stock
+              Expanded(
+                flex: 2,
+                child: Text(
+                  item.trackStock
+                      ? item.currentStock.toStringAsFixed(0)
+                      : 'N/A',
+                  style: AppTheme.bodyMedium.copyWith(
+                    color: item.isLowStock
+                        ? AppTheme.danger
+                        : AppTheme.textPrimary,
+                  ),
+                ),
+              ),
+
+              // Unit
+              Expanded(
+                flex: 2,
+                child: Text(item.unitName ?? '-', style: AppTheme.bodyMedium),
+              ),
+
+              // Status
+              Expanded(
+                flex: 2,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  constraints: const BoxConstraints(maxWidth: 100),
+                  decoration: BoxDecoration(
+                    color: item.isActive
+                        ? AppTheme.success.withOpacity(0.1)
+                        : AppTheme.textMuted.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    item.statusText,
+                    style: TextStyle(
+                      color: item.isActive
+                          ? AppTheme.success
+                          : AppTheme.textMuted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+
+              // Actions
+              SizedBox(
+                width: 100,
+                child: Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit, size: 18),
+                      onPressed: () => _showEditItemDialog(item),
+                      tooltip: 'Edit',
+                      color: AppTheme.primaryBlue,
+                    ),
+                    IconButton(
+                      icon: Icon(
+                        item.isActive ? Icons.toggle_on : Icons.toggle_off,
+                        size: 18,
+                      ),
+                      onPressed: () => _toggleItemActive(item),
+                      tooltip: item.isActive ? 'Deactivate' : 'Activate',
+                      color: item.isActive
+                          ? AppTheme.success
+                          : AppTheme.textMuted,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Future<void> _showAddItemDialog() async {
-    final result = await showDialog<bool>(
+    final result = await showDialog(
       context: context,
       builder: (context) => const AddEditItemDialog(),
     );
 
     if (result == true && mounted) {
-      // Item was created, refresh the list
-      await context.read<ItemProvider>().fetchItems();
+      context.read<ItemProvider>().fetchItems();
     }
   }
 
   Future<void> _showEditItemDialog(Item item) async {
-    final result = await showDialog<bool>(
+    final result = await showDialog(
       context: context,
       builder: (context) => AddEditItemDialog(item: item),
     );
 
     if (result == true && mounted) {
-      // Item was updated, refresh the list
-      await context.read<ItemProvider>().fetchItems();
+      context.read<ItemProvider>().fetchItems();
     }
   }
 
-  Future<void> _toggleActive(Item item, ItemProvider provider) async {
-    final success = await provider.toggleActive(item.id!);
-    if (success && mounted) {
+  Future<void> _toggleItemActive(Item item) async {
+    final provider = context.read<ItemProvider>();
+    final success = await provider.updateItem(
+      item.id!,
+      item.copyWith(isActive: !item.isActive),
+    );
+
+    if (success != null && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            item.isActive
-                ? 'Item deactivated successfully'
-                : 'Item activated successfully',
+            '${item.name} ${item.isActive ? "deactivated" : "activated"}',
           ),
           backgroundColor: AppTheme.success,
         ),
       );
-    }
-  }
-
-  Future<void> _deleteItem(Item item, ItemProvider provider) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Item'),
-        content: Text('Are you sure you want to delete "${item.name}"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.danger),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      final success = await provider.deleteItem(item.id!);
-      if (success && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Item deleted successfully'),
-            backgroundColor: AppTheme.success,
-          ),
-        );
-      }
+      provider.fetchItems();
     }
   }
 }

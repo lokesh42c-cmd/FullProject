@@ -1,189 +1,241 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../models/item.dart';
 import '../services/item_service.dart';
+import 'package:tailoring_web/core/api/api_client.dart';
 
 /// Item Provider
-///
-/// Manages state for items (services and products)
-class ItemProvider extends ChangeNotifier {
-  final ItemService _service;
+/// Manages Item state and business logic
+class ItemProvider with ChangeNotifier {
+  final ItemService _itemService;
 
-  ItemProvider(this._service);
+  ItemProvider({ItemService? itemService})
+    : _itemService = itemService ?? ItemService();
 
+  // State
   List<Item> _items = [];
   bool _isLoading = false;
   String? _errorMessage;
 
   // Filters
-  String? _filterType;
-  bool? _filterActive = true;
-  String _searchQuery = '';
+  String? _searchQuery;
+  String? _filterItemType;
+  bool? _filterTrackStock;
+  bool? _filterIsActive = true;
 
+  // Getters
   List<Item> get items => _items;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
-  String? get filterType => _filterType;
-  bool? get filterActive => _filterActive;
-  String get searchQuery => _searchQuery;
+  String? get searchQuery => _searchQuery;
+  String? get filterItemType => _filterItemType;
+  bool? get filterTrackStock => _filterTrackStock;
+  bool? get filterIsActive => _filterIsActive;
 
-  /// Get filtered items
+  // Filtered items
   List<Item> get filteredItems {
-    var filtered = _items;
+    return _items.where((item) {
+      // Search filter
+      if (_searchQuery != null && _searchQuery!.isNotEmpty) {
+        final query = _searchQuery!.toLowerCase();
+        final matchesName = item.name.toLowerCase().contains(query);
+        final matchesBarcode =
+            item.barcode?.toLowerCase().contains(query) ?? false;
+        final matchesDescription =
+            item.description?.toLowerCase().contains(query) ?? false;
+        if (!matchesName && !matchesBarcode && !matchesDescription) {
+          return false;
+        }
+      }
 
-    // Filter by type
-    if (_filterType != null) {
-      filtered = filtered.where((i) => i.itemType == _filterType).toList();
-    }
+      // Item type filter
+      if (_filterItemType != null && item.itemType != _filterItemType) {
+        return false;
+      }
 
-    // Filter by active
-    if (_filterActive != null) {
-      filtered = filtered.where((i) => i.isActive == _filterActive).toList();
-    }
+      // Track stock filter
+      if (_filterTrackStock != null && item.trackStock != _filterTrackStock) {
+        return false;
+      }
 
-    // Filter by search
-    if (_searchQuery.isNotEmpty) {
-      final query = _searchQuery.toLowerCase();
-      filtered = filtered.where((i) {
-        return i.name.toLowerCase().contains(query) ||
-            (i.description?.toLowerCase().contains(query) ?? false);
-      }).toList();
-    }
+      // Active filter
+      if (_filterIsActive != null && item.isActive != _filterIsActive) {
+        return false;
+      }
 
-    return filtered;
+      return true;
+    }).toList();
   }
 
-  /// Get services only
-  List<Item> get services =>
-      _items.where((i) => i.itemType == ItemType.service).toList();
-
-  /// Get products only
-  List<Item> get products =>
-      _items.where((i) => i.itemType == ItemType.product).toList();
-
-  /// Get active items only
-  List<Item> get activeItems => _items.where((i) => i.isActive).toList();
-
   /// Fetch all items
-  Future<void> fetchItems({String? itemType, bool? isActive}) async {
+  Future<void> fetchItems() async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      final response = await _service.getItems(
-        itemType: itemType,
-        isActive: isActive,
+      _items = await _itemService.fetchItems(
+        search: _searchQuery,
+        itemType: _filterItemType,
+        trackStock: _filterTrackStock,
+        isActive: _filterIsActive,
       );
-      _items = response.items;
+      _errorMessage = null;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
     } catch (e) {
-      _errorMessage = e.toString();
+      _errorMessage = 'Failed to fetch items: $e';
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  /// Create item
-  Future<bool> createItem(Item item) async {
+  /// Fetch item by ID
+  Future<Item?> fetchItemById(int id) async {
     try {
-      final created = await _service.createItem(item);
-      _items.add(created);
-      _errorMessage = null;
+      return await _itemService.fetchItemById(id);
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
       notifyListeners();
-      return true;
+      return null;
     } catch (e) {
-      // Extract clean error message
-      String errorMsg = e.toString();
-      if (errorMsg.startsWith('Exception: ')) {
-        errorMsg = errorMsg.substring(11); // Remove "Exception: " prefix
-      }
-      _errorMessage = errorMsg;
+      _errorMessage = 'Failed to fetch item: $e';
       notifyListeners();
-      return false;
+      return null;
     }
   }
 
-  /// Update item
-  Future<bool> updateItem(int id, Item item) async {
+  /// Create new item
+  Future<Item?> createItem(Item item) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
     try {
-      final updated = await _service.updateItem(id, item);
+      final createdItem = await _itemService.createItem(item);
+      _items.insert(0, createdItem);
+      _errorMessage = null;
+      _isLoading = false;
+      notifyListeners();
+      return createdItem;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+      _isLoading = false;
+      notifyListeners();
+      return null;
+    } catch (e) {
+      _errorMessage = 'Failed to create item: $e';
+      _isLoading = false;
+      notifyListeners();
+      return null;
+    }
+  }
+
+  /// Update existing item
+  Future<Item?> updateItem(int id, Item item) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final updatedItem = await _itemService.updateItem(id, item);
       final index = _items.indexWhere((i) => i.id == id);
       if (index != -1) {
-        _items[index] = updated;
+        _items[index] = updatedItem;
       }
       _errorMessage = null;
+      _isLoading = false;
       notifyListeners();
-      return true;
+      return updatedItem;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+      _isLoading = false;
+      notifyListeners();
+      return null;
     } catch (e) {
-      // Extract clean error message
-      String errorMsg = e.toString();
-      if (errorMsg.startsWith('Exception: ')) {
-        errorMsg = errorMsg.substring(11); // Remove "Exception: " prefix
-      }
-      _errorMessage = errorMsg;
+      _errorMessage = 'Failed to update item: $e';
+      _isLoading = false;
       notifyListeners();
-      return false;
+      return null;
     }
   }
 
   /// Delete item
   Future<bool> deleteItem(int id) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
     try {
-      await _service.deleteItem(id);
-      _items.removeWhere((i) => i.id == id);
+      await _itemService.deleteItem(id);
+      _items.removeWhere((item) => item.id == id);
+      _errorMessage = null;
+      _isLoading = false;
       notifyListeners();
       return true;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+      _isLoading = false;
+      notifyListeners();
+      return false;
     } catch (e) {
-      _errorMessage = e.toString();
+      _errorMessage = 'Failed to delete item: $e';
+      _isLoading = false;
       notifyListeners();
       return false;
     }
   }
 
-  /// Toggle active status
-  Future<bool> toggleActive(int id) async {
+  /// Search items (for autocomplete)
+  Future<List<Item>> searchItems(String query) async {
     try {
-      final item = _items.firstWhere((i) => i.id == id);
-      final updated = await _service.toggleActive(id, !item.isActive);
-      final index = _items.indexWhere((i) => i.id == id);
-      if (index != -1) {
-        _items[index] = updated;
-        notifyListeners();
-      }
-      return true;
+      return await _itemService.searchItems(query);
     } catch (e) {
-      _errorMessage = e.toString();
-      notifyListeners();
-      return false;
+      return [];
     }
-  }
-
-  /// Set filter type
-  void setFilterType(String? type) {
-    _filterType = type;
-    notifyListeners();
-  }
-
-  /// Set filter active
-  void setFilterActive(bool? active) {
-    _filterActive = active;
-    notifyListeners();
   }
 
   /// Set search query
-  void setSearchQuery(String query) {
+  void setSearchQuery(String? query) {
     _searchQuery = query;
     notifyListeners();
   }
 
-  /// Clear filters
-  void clearFilters() {
-    _filterType = null;
-    _filterActive = true;
-    _searchQuery = '';
+  /// Set item type filter
+  void setFilterItemType(String? itemType) {
+    _filterItemType = itemType;
     notifyListeners();
   }
 
-  /// Refresh list
-  Future<void> refresh() => fetchItems();
+  /// Set track stock filter
+  void setFilterTrackStock(bool? trackStock) {
+    _filterTrackStock = trackStock;
+    notifyListeners();
+  }
+
+  /// Set active filter
+  void setFilterIsActive(bool? isActive) {
+    _filterIsActive = isActive;
+    notifyListeners();
+  }
+
+  /// Clear all filters
+  void clearFilters() {
+    _searchQuery = null;
+    _filterItemType = null;
+    _filterTrackStock = null;
+    _filterIsActive = true;
+    notifyListeners();
+  }
+
+  /// Refresh items
+  Future<void> refresh() async {
+    await fetchItems();
+  }
+
+  /// Clear error message
+  void clearError() {
+    _errorMessage = null;
+    notifyListeners();
+  }
 }

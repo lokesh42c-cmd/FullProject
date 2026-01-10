@@ -1,6 +1,6 @@
 """
-Orders app views - Simplified for GST Compliance
-Date: 2026-01-03
+Orders app views - Complete with ItemUnit
+Date: 2026-01-09
 """
 
 from rest_framework import viewsets, status, filters
@@ -9,9 +9,11 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q
+from rest_framework.parsers import MultiPartParser
 
 from core.permissions import CanManageOrders
-from .models import Customer, Order, OrderItem, Item
+from .models import Customer, Order, OrderItem, Item, OrderReferencePhoto
+from masters.models import ItemUnit
 from .serializers import (
     CustomerListSerializer,
     CustomerDetailSerializer,
@@ -20,7 +22,8 @@ from .serializers import (
     OrderDetailSerializer,
     OrderCreateSerializer,
     OrderItemSerializer,
-    ItemSerializer
+    ItemSerializer,
+    ItemUnitSerializer
 )
 
 
@@ -44,15 +47,12 @@ class CustomerViewSet(viewsets.ModelViewSet):
         return CustomerListSerializer
     
     def get_queryset(self):
-        """Filter customers by tenant"""
         user = self.request.user
-        
         if not hasattr(user, 'tenant') or user.tenant is None:
             return Customer.objects.none()
         
         queryset = Customer.objects.filter(tenant=user.tenant)
         
-        # Optional search
         search = self.request.query_params.get('search', None)
         if search:
             queryset = queryset.filter(
@@ -65,16 +65,58 @@ class CustomerViewSet(viewsets.ModelViewSet):
         return queryset.order_by('-created_at')
     
     def perform_create(self, serializer):
-        """Automatically assign tenant"""
         serializer.save(tenant=self.request.user.tenant)
     
     def perform_update(self, serializer):
-        """Verify tenant before update"""
         instance = serializer.instance
         if instance.tenant != self.request.user.tenant:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("You don't have permission to edit this customer.")
         serializer.save()
+
+
+# ==================== ITEM UNIT VIEWSET ====================
+
+class ItemUnitViewSet(viewsets.ModelViewSet):
+    """Item Unit management"""
+    
+    permission_classes = [IsAuthenticated, CanManageOrders]
+    serializer_class = ItemUnitSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['is_active']
+    search_fields = ['name', 'code']
+    
+    def get_queryset(self):
+        user = self.request.user
+        if not hasattr(user, 'tenant') or user.tenant is None:
+            return ItemUnit.objects.none()
+        
+        return ItemUnit.objects.filter(tenant=user.tenant).order_by('name')
+    
+    def perform_create(self, serializer):
+        serializer.save(tenant=self.request.user.tenant)
+
+
+# ==================== ITEM VIEWSET ====================
+
+class ItemViewSet(viewsets.ModelViewSet):
+    """Item master management with inventory"""
+    
+    permission_classes = [IsAuthenticated, CanManageOrders]
+    serializer_class = ItemSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['item_type', 'is_active', 'track_stock']
+    search_fields = ['name', 'description', 'hsn_sac_code', 'barcode']
+    
+    def get_queryset(self):
+        user = self.request.user
+        if not hasattr(user, 'tenant') or user.tenant is None:
+            return Item.objects.none()
+        
+        return Item.objects.filter(tenant=user.tenant, deleted_at__isnull=True).order_by('name')
+    
+    def perform_create(self, serializer):
+        serializer.save(tenant=self.request.user.tenant)
 
 
 # ==================== ORDER VIEWSET ====================
@@ -97,25 +139,20 @@ class OrderViewSet(viewsets.ModelViewSet):
         return OrderListSerializer
     
     def get_queryset(self):
-        """Filter orders by tenant"""
         user = self.request.user
-        
         if not hasattr(user, 'tenant') or user.tenant is None:
             return Order.objects.none()
         
         queryset = Order.objects.filter(tenant=user.tenant).select_related('customer')
-        
         return queryset.order_by('-order_date', '-created_at')
     
     def perform_create(self, serializer):
-        """Automatically assign tenant and created_by"""
         serializer.save(
             tenant=self.request.user.tenant,
             created_by=self.request.user
         )
     
     def perform_update(self, serializer):
-        """Verify tenant and check if locked"""
         instance = serializer.instance
         if instance.tenant != self.request.user.tenant:
             from rest_framework.exceptions import PermissionDenied
@@ -129,7 +166,6 @@ class OrderViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'])
     def lock(self, request, pk=None):
-        """Lock order to prevent modifications"""
         order = self.get_object()
         order.is_locked = True
         order.save()
@@ -142,10 +178,8 @@ class OrderViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'])
     def unlock(self, request, pk=None):
-        """Unlock order (admin only)"""
         order = self.get_object()
         
-        # Only allow owner/management to unlock
         if not request.user.is_owner and not request.user.is_management:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Only owners can unlock orders.")
@@ -158,6 +192,36 @@ class OrderViewSet(viewsets.ModelViewSet):
             'order_number': order.order_number,
             'is_locked': order.is_locked
         })
+    
+    @action(detail=True, methods=['post'], parser_classes=[MultiPartParser])
+    def upload_photo(self, request, pk=None):
+        order = self.get_object()
+        photo_file = request.FILES.get('photo')
+        
+        if not photo_file:
+            return Response({'error': 'No photo provided'}, status=400)
+        
+        photo = OrderReferencePhoto.objects.create(
+            order=order,
+            photo=photo_file
+        )
+        
+        return Response({
+            'id': photo.id,
+            'order': order.id,
+            'photo': photo.photo.name,
+            'photo_url': photo.photo.url,
+            'uploaded_at': photo.uploaded_at
+        })
+
+    @action(detail=True, methods=['delete'], url_path='delete_photo/(?P<photo_id>[^/.]+)')
+    def delete_photo(self, request, pk=None, photo_id=None):
+        try:
+            photo = OrderReferencePhoto.objects.get(id=photo_id, order_id=pk)
+            photo.delete()
+            return Response({'message': 'Photo deleted'})
+        except OrderReferencePhoto.DoesNotExist:
+            return Response({'error': 'Photo not found'}, status=404)
 
 
 # ==================== ORDER ITEM VIEWSET ====================
@@ -169,54 +233,8 @@ class OrderItemViewSet(viewsets.ModelViewSet):
     serializer_class = OrderItemSerializer
     
     def get_queryset(self):
-        """Filter order items by tenant"""
         user = self.request.user
-        
         if not hasattr(user, 'tenant') or user.tenant is None:
             return OrderItem.objects.none()
         
         return OrderItem.objects.filter(order__tenant=user.tenant)
-
-
-# ==================== ITEM VIEWSET ====================
-
-class ItemViewSet(viewsets.ModelViewSet):
-    """Item master management"""
-    
-    permission_classes = [IsAuthenticated, CanManageOrders]
-    serializer_class = ItemSerializer
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    filterset_fields = ['item_type', 'is_active']
-    search_fields = ['name', 'description', 'hsn_sac_code']
-    
-    def get_queryset(self):
-        """Filter items by tenant"""
-        user = self.request.user
-        
-        if not hasattr(user, 'tenant') or user.tenant is None:
-            return Item.objects.none()
-        
-        return Item.objects.filter(tenant=user.tenant).order_by('name')
-    
-    def perform_create(self, serializer):
-        """Automatically assign tenant"""
-        serializer.save(tenant=self.request.user.tenant)
-
-
-# ==================== DEPRECATED VIEWS (COMMENTED OUT) ====================
-
-"""
-# OLD FAMILY MEMBER VIEWSETS
-class FamilyMemberViewSet(viewsets.ModelViewSet):
-    pass
-
-class FamilyMemberMeasurementViewSet(viewsets.ModelViewSet):
-    pass
-
-# OLD INVOICE/PAYMENT VIEWSETS
-class InvoiceViewSet(viewsets.ModelViewSet):
-    pass
-
-class OrderPaymentViewSet(viewsets.ModelViewSet):
-    pass
-"""

@@ -1,10 +1,11 @@
 """
-Orders app serializers - Simplified for GST Compliance
-Date: 2026-01-03
+Orders app serializers - Complete with Inventory
+Date: 2026-01-09
 """
 
 from rest_framework import serializers
 from .models import Customer, Order, OrderItem, Item
+from masters.models import ItemUnit
 from decimal import Decimal
 
 
@@ -70,37 +71,79 @@ class CustomerCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
         fields = [
-            'id',  # ✅ ADDED - Required for Flutter to get customer ID
+            'id',
             'name', 'phone', 'whatsapp_number', 'email', 'gender',
             'customer_type', 'business_name', 'gstin', 'pan',
             'address_line1', 'address_line2', 'city', 'state', 'country', 'pincode',
-            # Basic & Common Measurements
+            # All measurement fields
             'height', 'weight', 'shoulder_width', 'bust_chest', 'waist', 'hip',
             'shoulder', 'sleeve_length', 'armhole', 'garment_length',
-            # Women-Specific Measurements
             'front_neck_depth', 'back_neck_depth', 'upper_chest', 'under_bust', 
             'shoulder_to_apex', 'bust_point_distance', 'front_cross', 'back_cross', 
             'lehenga_length', 'pant_waist', 'ankle_opening',
-            # Men-Specific Measurements
             'neck_round', 'stomach_round', 'yoke_width', 'front_width', 'back_width',
             'trouser_waist', 'front_rise', 'back_rise', 'bottom_opening',
-            # Sleeves & Legs Measurements
             'upper_arm_bicep', 'sleeve_loose', 'wrist_round', 'thigh', 'knee', 'ankle',
             'rise', 'inseam', 'outseam',
-            # Custom Fields
             'custom_field_1', 'custom_field_2', 'custom_field_3', 'custom_field_4',
             'custom_field_5', 'custom_field_6', 'custom_field_7', 'custom_field_8',
             'custom_field_9', 'custom_field_10',
             'measurement_notes', 'notes', 'is_active'
         ]
-        read_only_fields = ['id']  # ✅ ADDED - ID is auto-generated
+        read_only_fields = ['id']
+
+
+# ==================== ITEM UNIT SERIALIZERS ====================
+
+class ItemUnitSerializer(serializers.ModelSerializer):
+    """Item Unit serializer"""
+    
+    class Meta:
+        model = ItemUnit
+        fields = [
+            'id', 'name', 'code', 'is_active', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']
+
+
+# ==================== ITEM SERIALIZERS ====================
+
+class ItemSerializer(serializers.ModelSerializer):
+    """Item master serializer with full inventory support"""
+    
+    unit_name = serializers.CharField(source='unit.name', read_only=True)
+    
+    class Meta:
+        model = Item
+        fields = [
+            'id', 'item_type', 'name', 'description',
+            # Unit
+            'unit', 'unit_name',
+            # Stock Control
+            'track_stock', 'allow_negative_stock',
+            # Stock Fields
+            'opening_stock', 'current_stock', 'min_stock_level',
+            # Pricing
+            'purchase_price', 'selling_price',
+            # GST
+            'hsn_sac_code', 'tax_percent',
+            # Barcode
+            'barcode',
+            # Status
+            'has_been_used', 'is_active', 'deleted_at',
+            # Audit
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'current_stock', 'has_been_used', 'created_at', 'updated_at']
+
 
 # ==================== ORDER ITEM SERIALIZERS ====================
 
 class OrderItemSerializer(serializers.ModelSerializer):
-    """Order item serializer"""
+    """Order item serializer with discount support"""
     
     item_name = serializers.CharField(source='item.name', read_only=True)
+    item_barcode = serializers.CharField(source='item.barcode', read_only=True)
     subtotal = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     tax_amount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     total_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
@@ -108,8 +151,8 @@ class OrderItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrderItem
         fields = [
-            'id', 'item_type', 'item', 'item_name', 'item_description',
-            'quantity', 'unit_price', 'tax_percentage',
+            'id', 'item_type', 'item', 'item_name', 'item_barcode', 'item_description',
+            'quantity', 'unit_price', 'discount', 'tax_percentage',
             'subtotal', 'tax_amount', 'total_price',
             'status', 'notes'
         ]
@@ -170,7 +213,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             'customer', 'order_date', 'expected_delivery_date',
-            'order_status', 'estimated_total', 'payment_terms',
+            'order_status', 'delivery_status', 'estimated_total', 'payment_terms',
             'order_summary', 'customer_instructions', 'items'
         ]
     
@@ -193,45 +236,8 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         
         # Update items if provided
         if items_data is not None:
-            # Delete existing items
             instance.items.all().delete()
-            # Create new items
             for item_data in items_data:
                 OrderItem.objects.create(order=instance, **item_data)
         
         return instance
-
-
-# ==================== ITEM SERIALIZERS ====================
-
-class ItemSerializer(serializers.ModelSerializer):
-    """Item master serializer"""
-    
-    unit_name = serializers.CharField(source='unit.name', read_only=True)
-    
-    class Meta:
-        model = Item
-        fields = [
-            'id', 'item_type', 'name', 'description',
-            'unit', 'unit_name', 'hsn_sac_code',
-            'price', 'tax_percent', 'is_active', 'created_at'
-        ]
-
-
-# ==================== DEPRECATED SERIALIZERS (COMMENTED OUT) ====================
-
-"""
-# OLD FAMILY MEMBER SERIALIZERS
-class FamilyMemberSerializer(serializers.ModelSerializer):
-    pass
-
-class FamilyMemberMeasurementSerializer(serializers.ModelSerializer):
-    pass
-
-# OLD INVOICE/PAYMENT SERIALIZERS
-class InvoiceSerializer(serializers.ModelSerializer):
-    pass
-
-class OrderPaymentSerializer(serializers.ModelSerializer):
-    pass
-"""

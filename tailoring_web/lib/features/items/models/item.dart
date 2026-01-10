@@ -1,56 +1,130 @@
 import 'item_unit.dart';
 
 /// Item Model
-///
-/// Represents items (services and products) used in daily operations
-/// This is different from full Inventory - just quick items for orders
+/// Matches: orders.Item from backend
+/// Unified catalog for both SERVICE and PRODUCT types with optional inventory tracking
 class Item {
   final int? id;
-  final String itemType; // 'PRODUCT' or 'SERVICE'
+  final String itemType; // SERVICE or PRODUCT
   final String name;
   final String? description;
-  final ItemUnit? unit;
-  final int? unitId; // For creating/updating
+
+  // Unit
+  final int? unitId;
+  final String? unitName; // From API response
+
+  // Stock Control
+  final bool trackStock;
+  final bool allowNegativeStock;
+
+  // Stock Fields
+  final double openingStock;
+  final double currentStock;
+  final double minStockLevel;
+
+  // Pricing
+  final double? purchasePrice;
+  final double? sellingPrice;
+
+  // GST
   final String? hsnSacCode;
-  final double price;
   final double taxPercent;
+
+  // Barcode
+  final String? barcode;
+
+  // Status
+  final bool hasBeenUsed;
   final bool isActive;
-  final DateTime createdAt;
+  final DateTime? deletedAt;
+
+  // Audit
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
 
   Item({
     this.id,
     required this.itemType,
     required this.name,
     this.description,
-    this.unit,
     this.unitId,
+    this.unitName,
+    this.trackStock = false,
+    this.allowNegativeStock = true,
+    this.openingStock = 0.0,
+    this.currentStock = 0.0,
+    this.minStockLevel = 0.0,
+    this.purchasePrice,
+    this.sellingPrice,
     this.hsnSacCode,
-    required this.price,
     this.taxPercent = 0.0,
+    this.barcode,
+    this.hasBeenUsed = false,
     this.isActive = true,
-    DateTime? createdAt,
-  }) : createdAt = createdAt ?? DateTime.now();
+    this.deletedAt,
+    this.createdAt,
+    this.updatedAt,
+  });
 
-  /// Create from JSON
+  // Computed properties
+  bool get isLowStock {
+    if (!trackStock) return false;
+    return currentStock <= minStockLevel;
+  }
+
+  double get stockValue {
+    if (purchasePrice != null) {
+      return currentStock * purchasePrice!;
+    }
+    return 0.0;
+  }
+
+  String get typeDisplay => itemType == 'SERVICE' ? 'Service' : 'Product';
+
+  String get priceWithUnit {
+    if (sellingPrice == null) return 'N/A';
+    return '₹${sellingPrice!.toStringAsFixed(2)}';
+  }
+
+  String get statusText => isActive ? 'Active' : 'Inactive';
+
   factory Item.fromJson(Map<String, dynamic> json) {
     return Item(
       id: json['id'] as int?,
       itemType: json['item_type'] as String,
       name: json['name'] as String,
       description: json['description'] as String?,
-      unit: json['unit'] != null ? ItemUnit.fromJson(json['unit']) : null,
-      unitId: json['unit_id'] as int?,
+      unitId: json['unit'] as int?,
+      unitName: json['unit_name'] as String?,
+      trackStock: json['track_stock'] as bool? ?? false,
+      allowNegativeStock: json['allow_negative_stock'] as bool? ?? true,
+      openingStock: _parseDouble(json['opening_stock']),
+      currentStock: _parseDouble(json['current_stock']),
+      minStockLevel: _parseDouble(json['min_stock_level']),
+      purchasePrice: json['purchase_price'] != null
+          ? _parseDouble(json['purchase_price'])
+          : null,
+      sellingPrice: json['selling_price'] != null
+          ? _parseDouble(json['selling_price'])
+          : null,
       hsnSacCode: json['hsn_sac_code'] as String?,
-      price: _parseDouble(json['price']),
-      taxPercent: _parseDouble(json['tax_percent'] ?? 0),
+      taxPercent: _parseDouble(json['tax_percent']),
+      barcode: json['barcode'] as String?,
+      hasBeenUsed: json['has_been_used'] as bool? ?? false,
       isActive: json['is_active'] as bool? ?? true,
+      deletedAt: json['deleted_at'] != null
+          ? DateTime.parse(json['deleted_at'] as String)
+          : null,
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)
-          : DateTime.now(),
+          : null,
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'] as String)
+          : null,
     );
   }
 
-  /// Helper to parse double from string or number
+  // Helper method to parse double from string or num
   static double _parseDouble(dynamic value) {
     if (value == null) return 0.0;
     if (value is double) return value;
@@ -59,98 +133,73 @@ class Item {
     return 0.0;
   }
 
-  /// Convert to JSON
   Map<String, dynamic> toJson() {
     return {
       if (id != null) 'id': id,
       'item_type': itemType,
       'name': name,
-      'description': description ?? '', // ← Empty string instead of null
-      'unit': unitId,
-      'hsn_sac_code': hsnSacCode ?? '', // ← Same for HSN/SAC
-      'price': price,
+      if (description != null) 'description': description,
+      if (unitId != null) 'unit': unitId,
+      'track_stock': trackStock,
+      'allow_negative_stock': allowNegativeStock,
+      'opening_stock': openingStock,
+      'current_stock': currentStock,
+      'min_stock_level': minStockLevel,
+      if (purchasePrice != null) 'purchase_price': purchasePrice,
+      if (sellingPrice != null) 'selling_price': sellingPrice,
+      if (hsnSacCode != null) 'hsn_sac_code': hsnSacCode,
       'tax_percent': taxPercent,
+      if (barcode != null) 'barcode': barcode,
+      'has_been_used': hasBeenUsed,
       'is_active': isActive,
     };
   }
 
-  /// Helper getters
-  String get typeDisplay {
-    return itemType == 'SERVICE' ? 'Service' : 'Product';
-  }
-
-  String get priceDisplay {
-    return '₹${price.toStringAsFixed(2)}';
-  }
-
-  // Alias for backward compatibility
-  String get formattedPrice => priceDisplay;
-
-  String get priceWithUnit {
-    if (unit != null) {
-      return '₹${price.toStringAsFixed(2)}/${unit!.code}';
-    }
-    return priceDisplay;
-  }
-
-  String get statusText {
-    return isActive ? 'Active' : 'Inactive';
-  }
-
-  /// Copy with
   Item copyWith({
     int? id,
     String? itemType,
     String? name,
     String? description,
-    ItemUnit? unit,
     int? unitId,
+    String? unitName,
+    bool? trackStock,
+    bool? allowNegativeStock,
+    double? openingStock,
+    double? currentStock,
+    double? minStockLevel,
+    double? purchasePrice,
+    double? sellingPrice,
     String? hsnSacCode,
-    double? price,
     double? taxPercent,
+    String? barcode,
+    bool? hasBeenUsed,
     bool? isActive,
+    DateTime? deletedAt,
     DateTime? createdAt,
+    DateTime? updatedAt,
   }) {
     return Item(
       id: id ?? this.id,
       itemType: itemType ?? this.itemType,
       name: name ?? this.name,
       description: description ?? this.description,
-      unit: unit ?? this.unit,
       unitId: unitId ?? this.unitId,
+      unitName: unitName ?? this.unitName,
+      trackStock: trackStock ?? this.trackStock,
+      allowNegativeStock: allowNegativeStock ?? this.allowNegativeStock,
+      openingStock: openingStock ?? this.openingStock,
+      currentStock: currentStock ?? this.currentStock,
+      minStockLevel: minStockLevel ?? this.minStockLevel,
+      purchasePrice: purchasePrice ?? this.purchasePrice,
+      sellingPrice: sellingPrice ?? this.sellingPrice,
       hsnSacCode: hsnSacCode ?? this.hsnSacCode,
-      price: price ?? this.price,
       taxPercent: taxPercent ?? this.taxPercent,
+      barcode: barcode ?? this.barcode,
+      hasBeenUsed: hasBeenUsed ?? this.hasBeenUsed,
       isActive: isActive ?? this.isActive,
+      deletedAt: deletedAt ?? this.deletedAt,
       createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
-}
-
-/// Response for list of items
-class ItemListResponse {
-  final int count;
-  final List<Item> items;
-
-  ItemListResponse({required this.count, required this.items});
-
-  factory ItemListResponse.fromJson(Map<String, dynamic> json) {
-    return ItemListResponse(
-      count: json['count'] as int,
-      items: (json['results'] as List)
-          .map((item) => Item.fromJson(item))
-          .toList(),
-    );
-  }
-}
-
-/// Item Types
-class ItemType {
-  static const String product = 'PRODUCT';
-  static const String service = 'SERVICE';
-
-  static List<Map<String, String>> get all => [
-    {'value': product, 'label': 'Product'},
-    {'value': service, 'label': 'Service'},
-  ];
 }

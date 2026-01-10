@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:tailoring_web/core/theme/app_theme.dart';
+import '../../../core/theme/app_theme.dart';
 import '../models/item.dart';
-import '../models/item_unit.dart';
-import '../providers/item_provider.dart';
-import '../providers/item_unit_provider.dart';
+import '../../items/providers/item_provider.dart';
+import '../../masters/models/item_unit.dart';
+import '../../masters/providers/masters_provider.dart';
 
 /// Add/Edit Item Dialog
+/// Form for creating or editing items
 class AddEditItemDialog extends StatefulWidget {
   final Item? item;
 
@@ -19,84 +20,186 @@ class AddEditItemDialog extends StatefulWidget {
 
 class _AddEditItemDialogState extends State<AddEditItemDialog> {
   final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  final _sellingPriceController = TextEditingController();
+  final _purchasePriceController = TextEditingController();
+  final _hsnSacCodeController = TextEditingController();
+  final _taxPercentController = TextEditingController(text: '0');
+  final _barcodeController = TextEditingController();
+  final _openingStockController = TextEditingController(text: '0');
+  final _minStockLevelController = TextEditingController(text: '0');
 
-  late TextEditingController _nameController;
-  late TextEditingController _descriptionController;
-  late TextEditingController _priceController;
-  late TextEditingController _taxController;
-  late TextEditingController _hsnSacController;
-
-  String _selectedType = 'SERVICE';
+  String _itemType = 'SERVICE';
+  bool _trackStock = false;
+  bool _allowNegativeStock = true;
   int? _selectedUnitId;
-  bool _isActive = true;
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
 
-    final item = widget.item;
-    _nameController = TextEditingController(text: item?.name ?? '');
-    _descriptionController = TextEditingController(
-      text: item?.description ?? '',
-    );
-    _priceController = TextEditingController(
-      text: item?.price.toString() ?? '',
-    );
-    _taxController = TextEditingController(
-      text: item?.taxPercent.toString() ?? '18.0',
-    );
-    _hsnSacController = TextEditingController(text: item?.hsnSacCode ?? '');
-
-    _selectedType = item?.itemType ?? 'SERVICE';
-    _selectedUnitId = item?.unitId ?? item?.unit?.id;
-    _isActive = item?.isActive ?? true;
-
     // Load units
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<ItemUnitProvider>().fetchUnits(isActive: true);
+      context.read<MastersProvider>().fetchItemUnits();
     });
+
+    // Populate form if editing
+    if (widget.item != null) {
+      final item = widget.item!;
+      _nameController.text = item.name;
+      _descriptionController.text = item.description ?? '';
+      _itemType = item.itemType;
+      _trackStock = item.trackStock;
+      _allowNegativeStock = item.allowNegativeStock;
+      _selectedUnitId = item.unitId;
+      _sellingPriceController.text =
+          item.sellingPrice?.toStringAsFixed(2) ?? '';
+      _purchasePriceController.text =
+          item.purchasePrice?.toStringAsFixed(2) ?? '';
+      _hsnSacCodeController.text = item.hsnSacCode ?? '';
+      _taxPercentController.text = item.taxPercent.toStringAsFixed(2);
+      _barcodeController.text = item.barcode ?? '';
+      _openingStockController.text = item.openingStock.toStringAsFixed(2);
+      _minStockLevelController.text = item.minStockLevel.toStringAsFixed(2);
+    }
   }
 
   @override
   void dispose() {
     _nameController.dispose();
     _descriptionController.dispose();
-    _priceController.dispose();
-    _taxController.dispose();
-    _hsnSacController.dispose();
+    _sellingPriceController.dispose();
+    _purchasePriceController.dispose();
+    _hsnSacCodeController.dispose();
+    _taxPercentController.dispose();
+    _barcodeController.dispose();
+    _openingStockController.dispose();
+    _minStockLevelController.dispose();
     super.dispose();
+  }
+
+  Future<void> _saveItem() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      // Parse numeric values safely
+      final openingStock = _openingStockController.text.isEmpty
+          ? 0.0
+          : (double.tryParse(_openingStockController.text) ?? 0.0);
+
+      final minStockLevel = _minStockLevelController.text.isEmpty
+          ? 0.0
+          : (double.tryParse(_minStockLevelController.text) ?? 0.0);
+
+      final sellingPrice = _sellingPriceController.text.isEmpty
+          ? null
+          : double.tryParse(_sellingPriceController.text);
+
+      final purchasePrice = _purchasePriceController.text.isEmpty
+          ? null
+          : double.tryParse(_purchasePriceController.text);
+
+      final taxPercent = _taxPercentController.text.isEmpty
+          ? 0.0
+          : (double.tryParse(_taxPercentController.text) ?? 0.0);
+
+      final item = Item(
+        id: widget.item?.id,
+        itemType: _itemType,
+        name: _nameController.text.trim(),
+        description: _descriptionController.text.trim().isEmpty
+            ? null
+            : _descriptionController.text.trim(),
+        unitId: _selectedUnitId,
+        trackStock: _trackStock,
+        allowNegativeStock: _allowNegativeStock,
+        openingStock: openingStock,
+        currentStock: 0.0,
+        minStockLevel: minStockLevel,
+        sellingPrice: sellingPrice,
+        purchasePrice: purchasePrice,
+        hsnSacCode: _hsnSacCodeController.text.trim().isEmpty
+            ? null
+            : _hsnSacCodeController.text.trim(),
+        taxPercent: taxPercent,
+        barcode: _barcodeController.text.trim().isEmpty
+            ? null
+            : _barcodeController.text.trim(),
+      );
+
+      final provider = context.read<ItemProvider>();
+      Item? savedItem;
+
+      if (widget.item == null) {
+        // Create new item
+        savedItem = await provider.createItem(item);
+      } else {
+        // Update existing item
+        savedItem = await provider.updateItem(widget.item!.id!, item);
+      }
+
+      if (savedItem != null && mounted) {
+        Navigator.pop(context, true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              widget.item == null
+                  ? 'Item created successfully'
+                  : 'Item updated successfully',
+            ),
+            backgroundColor: AppTheme.success,
+          ),
+        );
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(provider.errorMessage ?? 'Failed to save item'),
+            backgroundColor: AppTheme.danger,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: AppTheme.danger,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isEdit = widget.item != null;
-    final unitProvider = context.watch<ItemUnitProvider>();
+    final mastersProvider = context.watch<MastersProvider>();
 
     return Dialog(
       child: Container(
         width: 600,
         constraints: const BoxConstraints(maxHeight: 700),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           children: [
             // Header
             Container(
-              padding: const EdgeInsets.all(AppTheme.space5),
+              padding: const EdgeInsets.all(20),
               decoration: const BoxDecoration(
-                color: AppTheme.backgroundGray,
+                color: AppTheme.backgroundWhite,
                 border: Border(bottom: BorderSide(color: AppTheme.borderLight)),
               ),
               child: Row(
                 children: [
-                  Icon(
-                    isEdit ? Icons.edit : Icons.add,
-                    color: AppTheme.primaryBlue,
-                  ),
-                  const SizedBox(width: AppTheme.space3),
                   Text(
-                    isEdit ? 'Edit Item' : 'Add Item',
-                    style: AppTheme.heading2,
+                    widget.item == null ? 'Add New Item' : 'Edit Item',
+                    style: AppTheme.heading3,
                   ),
                   const Spacer(),
                   IconButton(
@@ -110,73 +213,100 @@ class _AddEditItemDialogState extends State<AddEditItemDialog> {
             // Form
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(AppTheme.space6),
+                padding: const EdgeInsets.all(20),
                 child: Form(
                   key: _formKey,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Type
-                      Row(
-                        children: [
-                          Expanded(
-                            child: RadioListTile<String>(
-                              title: const Text('Service'),
-                              value: 'SERVICE',
-                              groupValue: _selectedType,
-                              onChanged: (value) {
-                                setState(() => _selectedType = value!);
-                              },
-                              contentPadding: EdgeInsets.zero,
-                            ),
+                      // Item Type
+                      Text('Item Type *', style: AppTheme.bodySmall),
+                      const SizedBox(height: 8),
+                      SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment(
+                            value: 'SERVICE',
+                            label: Text('Service'),
+                            icon: Icon(Icons.build, size: 16),
                           ),
-                          Expanded(
-                            child: RadioListTile<String>(
-                              title: const Text('Product'),
-                              value: 'PRODUCT',
-                              groupValue: _selectedType,
-                              onChanged: (value) {
-                                setState(() => _selectedType = value!);
-                              },
-                              contentPadding: EdgeInsets.zero,
-                            ),
+                          ButtonSegment(
+                            value: 'PRODUCT',
+                            label: Text('Product'),
+                            icon: Icon(Icons.inventory, size: 16),
                           ),
                         ],
+                        selected: {_itemType},
+                        onSelectionChanged: (Set<String> newSelection) {
+                          setState(() {
+                            _itemType = newSelection.first;
+                          });
+                        },
                       ),
-                      const SizedBox(height: AppTheme.space4),
+                      const SizedBox(height: 16),
 
-                      // Name
+                      // Item Name
                       TextFormField(
                         controller: _nameController,
                         decoration: const InputDecoration(
                           labelText: 'Item Name *',
-                          hintText: 'e.g., Blouse Stitching, Silk Fabric',
+                          hintText: 'Enter item name',
                         ),
-                        validator: (value) =>
-                            value?.isEmpty ?? true ? 'Required' : null,
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Item name is required';
+                          }
+                          return null;
+                        },
                       ),
-                      const SizedBox(height: AppTheme.space4),
+                      const SizedBox(height: 16),
 
                       // Description
                       TextFormField(
                         controller: _descriptionController,
                         decoration: const InputDecoration(
                           labelText: 'Description',
-                          hintText: 'Brief description',
+                          hintText: 'Enter description',
                         ),
                         maxLines: 2,
                       ),
-                      const SizedBox(height: AppTheme.space4),
+                      const SizedBox(height: 16),
 
-                      // Price and Tax
+                      // Unit
+                      DropdownButtonFormField<int>(
+                        value: _selectedUnitId,
+                        decoration: const InputDecoration(
+                          labelText: 'Unit',
+                          hintText: 'Select unit',
+                        ),
+                        items: mastersProvider.itemUnits.map((unit) {
+                          return DropdownMenuItem<int>(
+                            value: unit.id,
+                            child: Text('${unit.name} (${unit.code})'),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedUnitId = value;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Pricing Section
+                      Text(
+                        'Pricing',
+                        style: AppTheme.bodyMedium.copyWith(
+                          fontWeight: AppTheme.fontSemibold,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
                       Row(
                         children: [
                           Expanded(
-                            flex: 2,
                             child: TextFormField(
-                              controller: _priceController,
+                              controller: _sellingPriceController,
                               decoration: const InputDecoration(
-                                labelText: 'Price *',
+                                labelText: 'Selling Price',
                                 prefixText: '₹',
                               ),
                               keyboardType: TextInputType.number,
@@ -185,17 +315,15 @@ class _AddEditItemDialogState extends State<AddEditItemDialog> {
                                   RegExp(r'^\d+\.?\d{0,2}'),
                                 ),
                               ],
-                              validator: (value) =>
-                                  value?.isEmpty ?? true ? 'Required' : null,
                             ),
                           ),
-                          const SizedBox(width: AppTheme.space4),
+                          const SizedBox(width: 16),
                           Expanded(
                             child: TextFormField(
-                              controller: _taxController,
+                              controller: _purchasePriceController,
                               decoration: const InputDecoration(
-                                labelText: 'Tax %',
-                                hintText: '18.0',
+                                labelText: 'Purchase Price',
+                                prefixText: '₹',
                               ),
                               keyboardType: TextInputType.number,
                               inputFormatters: [
@@ -203,102 +331,157 @@ class _AddEditItemDialogState extends State<AddEditItemDialog> {
                                   RegExp(r'^\d+\.?\d{0,2}'),
                                 ),
                               ],
-                              validator: (value) =>
-                                  value?.isEmpty ?? true ? 'Required' : null,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: AppTheme.space4),
+                      const SizedBox(height: 16),
 
-                      // Unit and HSN/SAC
+                      // GST Section
+                      Text(
+                        'GST Details',
+                        style: AppTheme.bodyMedium.copyWith(
+                          fontWeight: AppTheme.fontSemibold,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
                       Row(
                         children: [
                           Expanded(
-                            child: DropdownButtonFormField<int>(
-                              value: _selectedUnitId,
+                            child: TextFormField(
+                              controller: _hsnSacCodeController,
                               decoration: const InputDecoration(
-                                labelText: 'Unit',
+                                labelText: 'HSN/SAC Code',
                               ),
-                              items: [
-                                const DropdownMenuItem(
-                                  value: null,
-                                  child: Text('Select unit'),
-                                ),
-                                ...unitProvider.activeUnits.map((unit) {
-                                  return DropdownMenuItem(
-                                    value: unit.id,
-                                    child: Text(unit.displayName),
-                                  );
-                                }).toList(),
-                              ],
-                              onChanged: (value) {
-                                setState(() => _selectedUnitId = value);
-                              },
                             ),
                           ),
-                          const SizedBox(width: AppTheme.space4),
+                          const SizedBox(width: 16),
                           Expanded(
                             child: TextFormField(
-                              controller: _hsnSacController,
-                              decoration: InputDecoration(
-                                labelText: _selectedType == 'SERVICE'
-                                    ? 'SAC Code'
-                                    : 'HSN Code',
-                                hintText: '998599',
+                              controller: _taxPercentController,
+                              decoration: const InputDecoration(
+                                labelText: 'Tax %',
+                                suffixText: '%',
                               ),
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(
+                                  RegExp(r'^\d+\.?\d{0,2}'),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: AppTheme.space4),
+                      const SizedBox(height: 16),
 
-                      // Active status
-                      SwitchListTile(
-                        title: const Text('Active'),
-                        subtitle: Text(
-                          _isActive
-                              ? 'Item is currently active'
-                              : 'Item is inactive',
-                          style: AppTheme.bodySmall,
+                      // Barcode
+                      TextFormField(
+                        controller: _barcodeController,
+                        decoration: const InputDecoration(
+                          labelText: 'Barcode',
+                          hintText: 'Enter barcode',
                         ),
-                        value: _isActive,
-                        onChanged: (value) => setState(() => _isActive = value),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Stock Tracking
+                      CheckboxListTile(
+                        title: const Text('Track Stock'),
+                        subtitle: const Text('Enable inventory tracking'),
+                        value: _trackStock,
+                        onChanged: (value) {
+                          setState(() {
+                            _trackStock = value ?? false;
+                          });
+                        },
                         contentPadding: EdgeInsets.zero,
                       ),
+
+                      if (_trackStock) ...[
+                        const SizedBox(height: 12),
+                        CheckboxListTile(
+                          title: const Text('Allow Negative Stock'),
+                          subtitle: const Text(
+                            'Allow orders when stock is low',
+                          ),
+                          value: _allowNegativeStock,
+                          onChanged: (value) {
+                            setState(() {
+                              _allowNegativeStock = value ?? true;
+                            });
+                          },
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: _openingStockController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Opening Stock',
+                                ),
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.allow(
+                                    RegExp(r'^\d+\.?\d{0,2}'),
+                                  ),
+                                ],
+                                enabled: widget.item == null,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: TextFormField(
+                                controller: _minStockLevelController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Min Stock Level',
+                                ),
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.allow(
+                                    RegExp(r'^\d+\.?\d{0,2}'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),
               ),
             ),
 
-            // Footer
+            // Actions
             Container(
-              padding: const EdgeInsets.all(AppTheme.space5),
+              padding: const EdgeInsets.all(20),
               decoration: const BoxDecoration(
-                color: AppTheme.backgroundGray,
+                color: AppTheme.backgroundWhite,
                 border: Border(top: BorderSide(color: AppTheme.borderLight)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  TextButton(
+                  OutlinedButton(
                     onPressed: _isLoading ? null : () => Navigator.pop(context),
                     child: const Text('Cancel'),
                   ),
-                  const SizedBox(width: AppTheme.space3),
+                  const SizedBox(width: 12),
                   ElevatedButton(
                     onPressed: _isLoading ? null : _saveItem,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryBlue,
-                    ),
                     child: _isLoading
                         ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
-                        : Text(isEdit ? 'Update' : 'Create'),
+                        : Text(widget.item == null ? 'Create' : 'Update'),
                   ),
                 ],
               ),
@@ -307,66 +490,5 @@ class _AddEditItemDialogState extends State<AddEditItemDialog> {
         ),
       ),
     );
-  }
-
-  Future<void> _saveItem() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _isLoading = true);
-
-    final item = Item(
-      id: widget.item?.id,
-      itemType: _selectedType,
-      name: _nameController.text.trim(),
-      description: _descriptionController.text.trim().isEmpty
-          ? null
-          : _descriptionController.text.trim(),
-      unitId: _selectedUnitId,
-      hsnSacCode: _hsnSacController.text.trim().isEmpty
-          ? null
-          : _hsnSacController.text.trim(),
-      price: double.parse(_priceController.text),
-      taxPercent: double.parse(_taxController.text),
-      isActive: _isActive,
-    );
-
-    final provider = context.read<ItemProvider>();
-    final bool success;
-
-    if (widget.item == null) {
-      success = await provider.createItem(item);
-    } else {
-      success = await provider.updateItem(widget.item!.id!, item);
-    }
-
-    setState(() => _isLoading = false);
-
-    if (success && mounted) {
-      // SUCCESS - Close dialog and show success message
-      Navigator.pop(context, true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            widget.item == null
-                ? 'Item created successfully'
-                : 'Item updated successfully',
-          ),
-          backgroundColor: AppTheme.success,
-        ),
-      );
-    } else if (mounted) {
-      // ERROR - Keep dialog open and show error
-      final errorMsg = provider.errorMessage ?? 'Failed to save item';
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(errorMsg),
-          backgroundColor: AppTheme.danger,
-          duration: const Duration(seconds: 5),
-        ),
-      );
-
-      // DON'T CLOSE DIALOG - User can fix the error!
-    }
   }
 }

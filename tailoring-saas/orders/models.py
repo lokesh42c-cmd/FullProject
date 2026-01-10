@@ -465,6 +465,14 @@ class OrderItem(models.Model):
         validators=[MinValueValidator(Decimal('0.00'))],
         verbose_name='Unit Price'
     )
+    discount = models.DecimalField(
+    max_digits=10,
+    decimal_places=2,
+    default=Decimal('0.00'),
+    validators=[MinValueValidator(Decimal('0.00'))],
+    verbose_name='Discount Amount',
+    help_text='Discount per item'
+    )
     
     tax_percentage = models.DecimalField(
         max_digits=5,
@@ -503,7 +511,8 @@ class OrderItem(models.Model):
     @property
     def subtotal(self):
         """Subtotal before tax"""
-        return self.quantity * self.unit_price
+        base_amount = self.quantity * self.unit_price
+        return base_amount - self.discount 
     
     @property
     def tax_amount(self):
@@ -686,6 +695,7 @@ class Item(models.Model):
             return self.current_stock * self.purchase_price
         return Decimal('0.00')
     
+    
     def save(self, *args, **kwargs):
         # Initialize current_stock from opening_stock on creation
         if not self.pk and self.opening_stock:
@@ -794,46 +804,31 @@ class StockTransaction(models.Model):
 
 # ==================== ORDER REFERENCE PHOTO MODEL ====================
 
+from django.db import models
+from django.conf import settings
+
 class OrderReferencePhoto(models.Model):
-    """Multiple reference photos for design inspiration per order"""
-    
     order = models.ForeignKey(
-        Order,
+        'Order',  # Make sure 'Order' is defined or imported
         on_delete=models.CASCADE,
-        related_name='reference_photos',
-        verbose_name='Order'
+        related_name='reference_photos'
     )
+    photo = models.ImageField(upload_to='order_photos/%Y/%m/')
     
-    photo = models.ImageField(
-        upload_to='orders/reference_photos/',
-        verbose_name='Reference Photo'
-    )
-    
-    description = models.CharField(
-        max_length=200,
-        blank=True,
-        verbose_name='Description',
-        help_text='e.g., Blouse design, Embroidery pattern, Color reference'
-    )
-    
+    # ADD THESE TWO FIELDS:
+    description = models.CharField(max_length=255, blank=True, null=True)
     uploaded_by = models.ForeignKey(
-        'core.User',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        verbose_name='Uploaded By'
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True
     )
     
     uploaded_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:
-        verbose_name = 'Order Reference Photo'
-        verbose_name_plural = 'Order Reference Photos'
-        ordering = ['-uploaded_at']
-    
-    def __str__(self):
-        return f"{self.order.order_number} - Reference Photo {self.id}"
-
+        verbose_name = "Order Reference Photo"
+        verbose_name_plural = "Order Reference Photos"
 
 # ==================== DEPRECATED MODELS (COMMENTED OUT) ====================
 # TODO: Remove after successful migration and testing

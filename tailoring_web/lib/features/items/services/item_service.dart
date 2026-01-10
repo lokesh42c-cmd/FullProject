@@ -2,98 +2,126 @@ import 'package:tailoring_web/core/api/api_client.dart';
 import '../models/item.dart';
 
 /// Item Service
-///
-/// Handles all item-related API calls (services and products)
+/// Handles all Item-related API calls
 class ItemService {
   final ApiClient _apiClient;
 
-  ItemService(this._apiClient);
+  ItemService({ApiClient? apiClient}) : _apiClient = apiClient ?? ApiClient();
 
-  /// Get all items with optional filters
-  Future<ItemListResponse> getItems({
-    String? itemType,
-    bool? isActive,
+  /// Fetch all items with optional filters
+  Future<List<Item>> fetchItems({
     String? search,
+    String? itemType,
+    bool? trackStock,
+    bool? isActive,
   }) async {
     try {
       final queryParams = <String, dynamic>{};
 
+      if (search != null && search.isNotEmpty) {
+        queryParams['search'] = search;
+      }
       if (itemType != null) {
         queryParams['item_type'] = itemType;
+      }
+      if (trackStock != null) {
+        queryParams['track_stock'] = trackStock;
       }
       if (isActive != null) {
         queryParams['is_active'] = isActive;
       }
-      if (search != null && search.isNotEmpty) {
-        queryParams['search'] = search;
-      }
 
       final response = await _apiClient.get(
         'orders/items/',
-        queryParameters: queryParams.isNotEmpty ? queryParams : null,
+        queryParameters: queryParams,
       );
 
-      return ItemListResponse.fromJson(response.data);
+      // Handle paginated response
+      final dynamic data = response.data;
+      final List<dynamic> results;
+
+      if (data is Map && data.containsKey('results')) {
+        results = data['results'] as List<dynamic>;
+      } else {
+        results = data as List<dynamic>;
+      }
+
+      return results
+          .map((json) => Item.fromJson(json as Map<String, dynamic>))
+          .toList();
     } catch (e) {
-      throw Exception('Failed to load items: $e');
+      rethrow;
     }
   }
 
-  /// Get single item
-  Future<Item> getItem(int id) async {
+  /// Fetch single item by ID
+  Future<Item> fetchItemById(int id) async {
     try {
       final response = await _apiClient.get('orders/items/$id/');
-      return Item.fromJson(response.data);
+      return Item.fromJson(response.data as Map<String, dynamic>);
     } catch (e) {
-      throw Exception('Failed to load item: $e');
+      rethrow;
     }
   }
 
-  /// Create item
+  /// Create new item
   Future<Item> createItem(Item item) async {
     try {
       final response = await _apiClient.post(
         'orders/items/',
         data: item.toJson(),
       );
-      return Item.fromJson(response.data);
+      return Item.fromJson(response.data as Map<String, dynamic>);
     } catch (e) {
-      throw Exception('Failed to create item: $e');
+      rethrow;
     }
   }
 
-  /// Update item
+  /// Update existing item
   Future<Item> updateItem(int id, Item item) async {
     try {
       final response = await _apiClient.put(
         'orders/items/$id/',
         data: item.toJson(),
       );
-      return Item.fromJson(response.data);
+      return Item.fromJson(response.data as Map<String, dynamic>);
     } catch (e) {
-      throw Exception('Failed to update item: $e');
+      rethrow;
     }
   }
 
-  /// Delete item
+  /// Delete item (soft delete)
   Future<void> deleteItem(int id) async {
     try {
       await _apiClient.delete('orders/items/$id/');
     } catch (e) {
-      throw Exception('Failed to delete item: $e');
+      rethrow;
     }
   }
 
-  /// Toggle active status
-  Future<Item> toggleActive(int id, bool isActive) async {
+  /// Search items by name or barcode (for autocomplete)
+  Future<List<Item>> searchItems(String query) async {
     try {
-      final response = await _apiClient.patch(
-        'orders/items/$id/',
-        data: {'is_active': isActive},
+      final response = await _apiClient.get(
+        'orders/items/',
+        queryParameters: {'search': query, 'is_active': true},
       );
-      return Item.fromJson(response.data);
+
+      // Handle paginated response
+      final dynamic data = response.data;
+      final List<dynamic> results;
+
+      if (data is Map && data.containsKey('results')) {
+        results = data['results'] as List<dynamic>;
+      } else {
+        results = data as List<dynamic>;
+      }
+
+      return results
+          .map((json) => Item.fromJson(json as Map<String, dynamic>))
+          .toList();
     } catch (e) {
-      throw Exception('Failed to toggle item status: $e');
+      rethrow;
     }
   }
 }
