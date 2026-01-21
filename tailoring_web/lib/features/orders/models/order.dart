@@ -5,7 +5,8 @@ import 'order_item.dart';
 class Order {
   // Identity
   final int? id;
-  final String orderNumber;
+  final String?
+  orderNumber; // ✅ FIXED: Made nullable since backend generates it
 
   // Customer
   final int customerId;
@@ -52,7 +53,7 @@ class Order {
 
   Order({
     this.id,
-    required this.orderNumber,
+    this.orderNumber, // ✅ FIXED: Removed 'required' keyword
     required this.customerId,
     this.customerName,
     this.customerPhone,
@@ -135,7 +136,7 @@ class Order {
   factory Order.fromJson(Map<String, dynamic> json) {
     return Order(
       id: json['id'] as int?,
-      orderNumber: json['order_number'] as String,
+      orderNumber: json['order_number'] as String?, // ✅ FIXED: Made nullable
       customerId: json['customer'] as int,
       customerName: json['customer_name'] as String?,
       customerPhone: json['customer_phone'] as String?,
@@ -180,7 +181,8 @@ class Order {
   Map<String, dynamic> toJson() {
     return {
       if (id != null) 'id': id,
-      'order_number': orderNumber,
+      if (orderNumber != null && orderNumber!.isNotEmpty)
+        'order_number': orderNumber, // ✅ FIXED: Only send if not null
       'customer': customerId,
       'order_date': orderDate.toIso8601String().split('T')[0],
       if (expectedDeliveryDate != null)

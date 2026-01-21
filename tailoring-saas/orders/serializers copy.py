@@ -1,8 +1,6 @@
 """
 Orders app serializers - Complete with Inventory
 Date: 2026-01-09
-FIXED: Order number generation moved to serializer
-FIXED v2: Tenant access from request.user.tenant
 """
 
 from rest_framework import serializers
@@ -176,7 +174,7 @@ class OrderListSerializer(serializers.ModelSerializer):
             'id', 'order_number', 'customer', 'customer_name', 'customer_phone',
             'order_date', 'expected_delivery_date', 'actual_delivery_date',
             'order_status', 'order_status_display',
-            'delivery_status', 'delivery_status_display','priority',
+            'delivery_status', 'delivery_status_display',
             'estimated_total', 'is_locked', 'created_at'
         ]
 
@@ -201,7 +199,7 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             'delivery_status', 'delivery_status_display',
             'estimated_total', 'payment_terms',
             'order_summary', 'customer_instructions',
-            'is_locked', 'is_overdue', 'days_until_delivery','priority',
+            'is_locked', 'is_overdue', 'days_until_delivery',
             'items', 'created_by', 'updated_by', 'created_at', 'updated_at'
         ]
 
@@ -214,55 +212,15 @@ class OrderCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = [
-            'customer', 'order_date', 'expected_delivery_date', 'actual_delivery_date',
-            'order_status', 'delivery_status', 'estimated_total', 'payment_terms','priority',
+            'customer', 'order_date', 'expected_delivery_date',
+            'order_status', 'delivery_status', 'estimated_total', 'payment_terms',
             'order_summary', 'customer_instructions', 'items'
         ]
     
     def create(self, validated_data):
-        from django.utils import timezone
-        
         items_data = validated_data.pop('items', [])
-        
-        # ============ CRITICAL FIX #1 - v2 ============
-        # Generate order_number HERE in serializer BEFORE save
-        # FIXED: Get tenant from request.user.tenant instead of request.tenant
-        if 'order_number' not in validated_data or not validated_data.get('order_number'):
-            # Get tenant from user - this is the correct way for multi-tenant apps
-            request = self.context.get('request')
-            if request and hasattr(request.user, 'tenant'):
-                tenant = request.user.tenant
-            else:
-                # Fallback: This shouldn't happen, but handle gracefully
-                raise serializers.ValidationError("User tenant not found")
-            
-            year_month = timezone.now().strftime('%Y%m')
-            
-            # Get last order number for this tenant and month
-            last_order = Order.objects.filter(
-                tenant=tenant,
-                order_number__startswith=f'ORD-{year_month}'
-            ).order_by('-order_number').first()
-            
-            if last_order:
-                try:
-                    last_num = int(last_order.order_number.split('-')[-1])
-                    new_num = last_num + 1
-                except (ValueError, IndexError):
-                    new_num = 1
-            else:
-                new_num = 1
-            
-            validated_data['order_number'] = f'ORD-{year_month}-{new_num:05d}'
-        
-        # These will be passed from the view's perform_create
-        # Don't override them here - let the view handle it
-        # The view calls: serializer.save(tenant=..., created_by=...)
-        
-        # Create order with generated order_number
         order = Order.objects.create(**validated_data)
         
-        # Create order items
         for item_data in items_data:
             OrderItem.objects.create(order=order, **item_data)
         

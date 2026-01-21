@@ -1,60 +1,65 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:tailoring_web/core/theme/app_theme.dart';
+import 'package:tailoring_web/core/api/api_client.dart';
 import '../../../core/layouts/main_layout.dart';
-import '../../../core/theme/app_theme.dart';
-import '../providers/order_provider.dart';
-import '../models/order.dart';
-import '../widgets/order_status_badge.dart';
+import 'order_detail_tabs/overview_tab.dart';
+import 'order_detail_tabs/items_and_payments_tab.dart';
+import 'order_detail_tabs/measurements_tab.dart';
 
-/// Order Detail Screen
-/// View and edit order details with QR code display
 class OrderDetailScreen extends StatefulWidget {
   final int orderId;
 
-  const OrderDetailScreen({super.key, required this.orderId});
+  const OrderDetailScreen({Key? key, required this.orderId}) : super(key: key);
 
   @override
   State<OrderDetailScreen> createState() => _OrderDetailScreenState();
 }
 
-class _OrderDetailScreenState extends State<OrderDetailScreen> {
+class _OrderDetailScreenState extends State<OrderDetailScreen>
+    with SingleTickerProviderStateMixin {
+  final _apiClient = ApiClient();
+
+  late TabController _tabController;
+  Map<String, dynamic>? _orderData;
   bool _isLoading = true;
-  Order? _order;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    _loadOrder();
+    _tabController = TabController(length: 3, vsync: this);
+    _loadOrderDetails();
   }
 
-  Future<void> _loadOrder() async {
-    setState(() => _isLoading = true);
-    final order = await context.read<OrderProvider>().fetchOrderById(
-      widget.orderId,
-    );
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadOrderDetails() async {
     setState(() {
-      _order = order;
-      _isLoading = false;
+      _isLoading = true;
+      _error = null;
     });
-  }
 
-  Future<void> _toggleLock() async {
-    if (_order == null) return;
-
-    final success = _order!.isLocked
-        ? await context.read<OrderProvider>().unlockOrder(_order!.id!)
-        : await context.read<OrderProvider>().lockOrder(_order!.id!);
-
-    if (success) {
-      _loadOrder();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_order!.isLocked ? 'Order unlocked' : 'Order locked'),
-            backgroundColor: AppTheme.success,
-          ),
-        );
-      }
+    try {
+      final response = await _apiClient.get('orders/orders/${widget.orderId}/');
+      setState(() {
+        _orderData = response.data;
+        print('Order Data: $_orderData');
+        _isLoading = false;
+      });
+    } on ApiException catch (e) {
+      setState(() {
+        _error = e.message;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = 'Failed to load order details: $e';
+        _isLoading = false;
+      });
     }
   }
 
@@ -62,87 +67,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   Widget build(BuildContext context) {
     return MainLayout(
       currentRoute: '/orders',
-      child: Column(
-        children: [
-          _buildHeader(),
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _order == null
-                ? _buildErrorState()
-                : _buildContent(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.all(AppTheme.space5),
-      decoration: const BoxDecoration(
-        color: AppTheme.backgroundWhite,
-        border: Border(bottom: BorderSide(color: AppTheme.borderLight)),
-      ),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => Navigator.pop(context),
-          ),
-          const SizedBox(width: AppTheme.space3),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Order Details', style: AppTheme.heading2),
-              if (_order != null)
-                Text(
-                  _order!.orderNumber,
-                  style: AppTheme.bodySmall.copyWith(
-                    color: AppTheme.textSecondary,
-                  ),
-                ),
-            ],
-          ),
-          const Spacer(),
-          if (_order != null) ...[
-            if (_order!.isLocked)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: AppTheme.warning.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppTheme.warning),
-                ),
-                child: Row(
-                  children: const [
-                    Icon(Icons.lock, size: 16, color: AppTheme.warning),
-                    SizedBox(width: 6),
-                    Text(
-                      'Locked',
-                      style: TextStyle(
-                        color: AppTheme.warning,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            const SizedBox(width: 12),
-            IconButton(
-              icon: Icon(
-                _order!.isLocked ? Icons.lock_open : Icons.lock,
-                color: AppTheme.textSecondary,
-              ),
-              onPressed: _toggleLock,
-              tooltip: _order!.isLocked ? 'Unlock Order' : 'Lock Order',
-            ),
-          ],
-        ],
+      child: Scaffold(
+        backgroundColor: AppTheme.backgroundGrey,
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+            ? _buildErrorState()
+            : _buildContent(),
       ),
     );
   }
@@ -154,16 +85,21 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         children: [
           const Icon(Icons.error_outline, size: 64, color: AppTheme.danger),
           const SizedBox(height: 16),
-          const Text('Order not found', style: AppTheme.heading3),
+          Text(
+            'Error',
+            style: AppTheme.heading2.copyWith(color: AppTheme.danger),
+          ),
           const SizedBox(height: 8),
           Text(
-            'The order you are looking for does not exist',
-            style: AppTheme.bodyMedium.copyWith(color: AppTheme.textMuted),
+            _error!,
+            style: AppTheme.bodyMedium,
+            textAlign: TextAlign.center,
           ),
           const SizedBox(height: 24),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Go Back'),
+          ElevatedButton.icon(
+            onPressed: _loadOrderDetails,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry'),
           ),
         ],
       ),
@@ -171,403 +107,349 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   Widget _buildContent() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppTheme.space5),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                flex: 2,
-                child: Column(
-                  children: [
-                    _buildCustomerCard(),
-                    const SizedBox(height: AppTheme.space4),
-                    _buildOrderInfoCard(),
-                    const SizedBox(height: AppTheme.space4),
-                    _buildItemsCard(),
-                    const SizedBox(height: AppTheme.space4),
-                    _buildNotesCard(),
-                  ],
-                ),
-              ),
-              const SizedBox(width: AppTheme.space4),
-              Expanded(
-                child: Column(
-                  children: [
-                    if (_order!.qrCode != null) _buildQRCodeCard(),
-                    const SizedBox(height: AppTheme.space4),
-                    _buildStatusCard(),
-                    const SizedBox(height: AppTheme.space4),
-                    _buildTotalsCard(),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+    final orderNumber = _orderData!['order_number'] ?? 'N/A';
+    final isLocked = _orderData!['is_locked'] ?? false;
+    final isVoid = _orderData!['is_void'] ?? false;
 
-  Widget _buildCustomerCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.backgroundWhite,
-        border: Border.all(color: AppTheme.borderLight),
-        borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return Column(
+      children: [
+        // Header with Back Button and Order Number
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Row(
             children: [
-              const Icon(Icons.person, size: 20, color: AppTheme.primaryBlue),
-              const SizedBox(width: 8),
-              Text(
-                'Customer Details',
-                style: AppTheme.bodyMedium.copyWith(
-                  fontWeight: AppTheme.fontSemibold,
-                ),
+              IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.pop(context),
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _infoRow('Name', _order!.customerName ?? 'N/A'),
-          _infoRow('Phone', _order!.customerPhone ?? 'N/A'),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOrderInfoCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.backgroundWhite,
-        border: Border.all(color: AppTheme.borderLight),
-        borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.calendar_today,
-                size: 20,
-                color: AppTheme.primaryBlue,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Order Information',
-                style: AppTheme.bodyMedium.copyWith(
-                  fontWeight: AppTheme.fontSemibold,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _infoRow('Order Date', _order!.formattedOrderDate),
-          _infoRow('Expected Delivery', _order!.formattedExpectedDeliveryDate),
-          if (_order!.actualDeliveryDate != null)
-            _infoRow(
-              'Actual Delivery',
-              '${_order!.actualDeliveryDate!.day.toString().padLeft(2, '0')}-${_order!.actualDeliveryDate!.month.toString().padLeft(2, '0')}-${_order!.actualDeliveryDate!.year}',
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildItemsCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.backgroundWhite,
-        border: Border.all(color: AppTheme.borderLight),
-        borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.shopping_cart,
-                size: 20,
-                color: AppTheme.primaryBlue,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Order Items',
-                style: AppTheme.bodyMedium.copyWith(
-                  fontWeight: AppTheme.fontSemibold,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          ...(_order!.items.map(
-            (item) => Container(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: AppTheme.borderLight)),
-              ),
-              child: Row(
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          item.itemDescription,
-                          style: AppTheme.bodyMedium.copyWith(
-                            fontWeight: AppTheme.fontSemibold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Qty: ${item.quantity.toStringAsFixed(2)} × ₹${item.unitPrice.toStringAsFixed(2)}',
-                          style: AppTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                  ),
+                  const Text('Order Details', style: AppTheme.heading2),
                   Text(
-                    '₹${item.totalPrice.toStringAsFixed(2)}',
-                    style: AppTheme.bodyMediumBold,
+                    orderNumber,
+                    style: AppTheme.bodyMedium.copyWith(
+                      color: AppTheme.textSecondary,
+                    ),
                   ),
                 ],
               ),
-            ),
-          )),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNotesCard() {
-    if (_order!.orderSummary == null && _order!.customerInstructions == null) {
-      return const SizedBox.shrink();
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.backgroundWhite,
-        border: Border.all(color: AppTheme.borderLight),
-        borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.note, size: 20, color: AppTheme.primaryBlue),
-              const SizedBox(width: 8),
-              Text(
-                'Notes',
-                style: AppTheme.bodyMedium.copyWith(
-                  fontWeight: AppTheme.fontSemibold,
+              const Spacer(),
+              if (isLocked)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppTheme.warning.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: AppTheme.warning.withOpacity(0.3),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.lock, size: 16, color: AppTheme.warning),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Locked',
+                        style: AppTheme.bodySmall.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.warning,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+              if (isVoid) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppTheme.danger.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: AppTheme.danger.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.block, size: 16, color: AppTheme.danger),
+                      const SizedBox(width: 6),
+                      Text(
+                        'VOID',
+                        style: AppTheme.bodySmall.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.danger,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
-          const SizedBox(height: 16),
-          if (_order!.orderSummary != null) ...[
-            Text(
-              'Order Summary:',
-              style: AppTheme.bodySmall.copyWith(
-                fontWeight: AppTheme.fontSemibold,
+        ),
+
+        // Action Buttons Row
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(bottom: BorderSide(color: AppTheme.borderLight)),
+          ),
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _buildActionButton(
+                icon: Icons.print,
+                label: 'Print (Customer)',
+                onPressed: _onPrintCustomerCopy,
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(_order!.orderSummary!, style: AppTheme.bodySmall),
-            const SizedBox(height: 12),
-          ],
-          if (_order!.customerInstructions != null) ...[
-            Text(
-              'Customer Instructions:',
-              style: AppTheme.bodySmall.copyWith(
-                fontWeight: AppTheme.fontSemibold,
+              _buildActionButton(
+                icon: Icons.precision_manufacturing,
+                label: 'Print (Workshop)',
+                onPressed: _onPrintWorkshopCopy,
               ),
+              _buildActionButton(
+                icon: Icons.receipt_long,
+                label: 'Create Invoice',
+                onPressed: _onCreateInvoice,
+                isPrimary: true,
+              ),
+              if (!isVoid)
+                _buildActionButton(
+                  icon: Icons.block,
+                  label: 'Void Order',
+                  onPressed: _onVoidOrder,
+                  isDanger: true,
+                ),
+            ],
+          ),
+        ),
+
+        // Void Banner
+        if (isVoid)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            color: AppTheme.danger.withOpacity(0.1),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  size: 20,
+                  color: AppTheme.danger,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'This order has been voided',
+                        style: AppTheme.bodyMedium.copyWith(
+                          color: AppTheme.danger,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (_orderData!['void_reason'] != null)
+                        Text(
+                          'Reason: ${_orderData!['void_reason']}',
+                          style: AppTheme.bodySmall.copyWith(
+                            color: AppTheme.danger,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 4),
-            Text(_order!.customerInstructions!, style: AppTheme.bodySmall),
-          ],
-        ],
+          ),
+
+        // Lock Banner
+        if (isLocked && !isVoid)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            color: AppTheme.warning.withOpacity(0.1),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.info_outline,
+                  size: 20,
+                  color: AppTheme.warning,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'This order is locked. Some actions are disabled.',
+                    style: AppTheme.bodyMedium.copyWith(
+                      color: AppTheme.warning,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+        // Tabs
+        Container(
+          color: Colors.white,
+          child: TabBar(
+            controller: _tabController,
+            labelColor: AppTheme.primaryBlue,
+            unselectedLabelColor: AppTheme.textSecondary,
+            indicatorColor: AppTheme.primaryBlue,
+            indicatorWeight: 3,
+            labelStyle: AppTheme.bodyMedium.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+            tabs: const [
+              Tab(text: 'Overview'),
+              Tab(text: 'Items & Payments'),
+              Tab(text: 'Measurements'),
+            ],
+          ),
+        ),
+
+        // Tab Content
+        Expanded(
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              OverviewTab(
+                orderData: _orderData!,
+                isLocked: isLocked || isVoid,
+                onRefresh: _loadOrderDetails,
+              ),
+              ItemsAndPaymentsTab(
+                orderData: _orderData!,
+                isLocked: isLocked || isVoid,
+                onRefresh: _loadOrderDetails,
+              ),
+              MeasurementsTab(orderData: _orderData!),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+    bool isPrimary = false,
+    bool isDanger = false,
+  }) {
+    return ElevatedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 16),
+      label: Text(label),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: isDanger
+            ? AppTheme.danger
+            : isPrimary
+            ? AppTheme.primaryBlue
+            : Colors.white,
+        foregroundColor: isDanger
+            ? Colors.white
+            : isPrimary
+            ? Colors.white
+            : AppTheme.textPrimary,
+        elevation: isPrimary || isDanger ? 2 : 0,
+        side: !isPrimary && !isDanger
+            ? const BorderSide(color: AppTheme.borderLight)
+            : null,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),
     );
   }
 
-  Widget _buildQRCodeCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.backgroundWhite,
-        border: Border.all(color: AppTheme.borderLight),
-        borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
-      ),
-      child: Column(
-        children: [
-          Text(
-            'Order QR Code',
-            style: AppTheme.bodyMedium.copyWith(
-              fontWeight: AppTheme.fontSemibold,
+  void _onPrintCustomerCopy() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Print Customer Copy - To be implemented')),
+    );
+  }
+
+  void _onPrintWorkshopCopy() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Print Workshop Copy - To be implemented')),
+    );
+  }
+
+  void _onCreateInvoice() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Create Invoice - To be implemented')),
+    );
+  }
+
+  void _onVoidOrder() {
+    final TextEditingController reasonController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Void Order'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Are you sure you want to void this order?',
+              style: TextStyle(fontWeight: FontWeight.w600),
             ),
+            const SizedBox(height: 8),
+            const Text(
+              'This action will mark the order as void but keep it in the system for record-keeping.',
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: reasonController,
+              decoration: const InputDecoration(
+                labelText: 'Reason for voiding (required)',
+                border: OutlineInputBorder(),
+                hintText: 'e.g., Customer cancelled, Incorrect order',
+              ),
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
           ),
-          const SizedBox(height: 16),
-          Container(
-            width: 200,
-            height: 200,
-            decoration: BoxDecoration(
-              color: AppTheme.backgroundGrey,
-              border: Border.all(color: AppTheme.borderLight),
-              borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
-            ),
-            child: Image.network(
-              _order!.qrCode!,
-              fit: BoxFit.contain,
-              errorBuilder: (context, error, stackTrace) {
-                return const Center(
-                  child: Icon(
-                    Icons.qr_code,
-                    size: 48,
-                    color: AppTheme.textMuted,
+          ElevatedButton(
+            onPressed: () async {
+              if (reasonController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Please provide a reason for voiding'),
+                    backgroundColor: AppTheme.warning,
                   ),
                 );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+                return;
+              }
 
-  Widget _buildStatusCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.backgroundWhite,
-        border: Border.all(color: AppTheme.borderLight),
-        borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Status',
-            style: AppTheme.bodyMedium.copyWith(
-              fontWeight: AppTheme.fontSemibold,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Order Status:', style: AppTheme.bodySmall),
-              OrderStatusBadge(status: _order!.orderStatus),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Delivery Status:', style: AppTheme.bodySmall),
-              OrderStatusBadge(
-                status: _order!.deliveryStatus,
-                isDeliveryStatus: true,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTotalsCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.backgroundWhite,
-        border: Border.all(color: AppTheme.borderLight),
-        borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Order Total',
-            style: AppTheme.bodyMedium.copyWith(
-              fontWeight: AppTheme.fontSemibold,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Estimated Total:', style: AppTheme.bodySmall),
-              Text(
-                '₹${_order!.estimatedTotal.toStringAsFixed(2)}',
-                style: AppTheme.bodyMediumBold,
-              ),
-            ],
-          ),
-          if (_order!.totalPaid != null) ...[
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Total Paid:', style: AppTheme.bodySmall),
-                Text(
-                  '₹${_order!.totalPaid!.toStringAsFixed(2)}',
-                  style: AppTheme.bodyMedium.copyWith(
-                    color: AppTheme.success,
-                    fontWeight: AppTheme.fontSemibold,
-                  ),
+              Navigator.pop(context);
+              // TODO: Implement void order API call
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Void Order API - To be implemented'),
+                  backgroundColor: AppTheme.warning,
                 ),
-              ],
-            ),
-          ],
-          if (_order!.remainingBalance != null) ...[
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Balance:', style: AppTheme.bodySmall),
-                Text(
-                  '₹${_order!.remainingBalance!.toStringAsFixed(2)}',
-                  style: AppTheme.bodyMedium.copyWith(
-                    color: AppTheme.warning,
-                    fontWeight: AppTheme.fontSemibold,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _infoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 140,
-            child: Text(
-              label,
-              style: AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary),
-            ),
+              );
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.danger),
+            child: const Text('Void Order'),
           ),
-          Expanded(child: Text(value, style: AppTheme.bodyMedium)),
         ],
       ),
     );

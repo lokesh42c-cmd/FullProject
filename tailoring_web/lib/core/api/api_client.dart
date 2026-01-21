@@ -24,10 +24,9 @@ class ApiClient {
         connectTimeout: const Duration(seconds: 30),
         receiveTimeout: const Duration(seconds: 30),
         sendTimeout: const Duration(seconds: 30),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+        responseType: ResponseType.json, // ✅ CRITICAL FIX
+        contentType: 'application/json',
+        headers: {'Accept': 'application/json'},
       ),
     );
 

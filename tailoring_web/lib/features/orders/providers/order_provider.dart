@@ -42,9 +42,9 @@ class OrderProvider with ChangeNotifier {
       // Search filter
       if (_searchQuery != null && _searchQuery!.isNotEmpty) {
         final query = _searchQuery!.toLowerCase();
-        final matchesOrderNumber = order.orderNumber.toLowerCase().contains(
-          query,
-        );
+        // ✅ FIX: Handle nullable orderNumber
+        final matchesOrderNumber =
+            order.orderNumber?.toLowerCase().contains(query) ?? false;
         final matchesCustomerName =
             order.customerName?.toLowerCase().contains(query) ?? false;
         final matchesCustomerPhone =

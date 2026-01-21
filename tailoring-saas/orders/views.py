@@ -1,6 +1,7 @@
 """
 Orders app views - Complete with ItemUnit
 Date: 2026-01-09
+FIXED: OrderViewSet.create() returns OrderDetailSerializer
 """
 
 from rest_framework import viewsets, status, filters
@@ -150,6 +151,28 @@ class OrderViewSet(viewsets.ModelViewSet):
         serializer.save(
             tenant=self.request.user.tenant,
             created_by=self.request.user
+        )
+    
+    def create(self, request, *args, **kwargs):
+        """
+        ============ CRITICAL FIX ============
+        Override create to return OrderDetailSerializer response
+        This ensures the response includes order_number and proper field types
+        """
+        # Use OrderCreateSerializer for input validation
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        
+        # ✅ Use OrderDetailSerializer for response with complete data
+        order = serializer.instance
+        response_serializer = OrderDetailSerializer(order)
+        headers = self.get_success_headers(response_serializer.data)
+        
+        return Response(
+            response_serializer.data,
+            status=status.HTTP_201_CREATED,
+            headers=headers
         )
     
     def perform_update(self, serializer):

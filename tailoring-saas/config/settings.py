@@ -147,6 +147,7 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20,
     'DATETIME_FORMAT': '%Y-%m-%d %H:%M:%S',
     'DATE_FORMAT': '%Y-%m-%d',
+    'COERCE_DECIMAL_TO_STRING': False,  
 }
 
 # JWT Settings

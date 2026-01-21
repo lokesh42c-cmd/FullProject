@@ -294,6 +294,13 @@ class Order(models.Model):
         blank=True,
         verbose_name='Order QR Code'
     )
+
+    priority = models.CharField(
+        max_length=10,
+        choices=[('LOW', 'Low'), ('MEDIUM', 'Medium'), ('HIGH', 'High')],
+        default='MEDIUM',
+        verbose_name='Priority'
+    )
     
     # Lock order after invoicing starts
     is_locked = models.BooleanField(default=False, verbose_name='Locked')
@@ -465,6 +472,7 @@ class OrderItem(models.Model):
         validators=[MinValueValidator(Decimal('0.00'))],
         verbose_name='Unit Price'
     )
+    
     discount = models.DecimalField(
     max_digits=10,
     decimal_places=2,

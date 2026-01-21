@@ -32,7 +32,7 @@ class ReceiptVoucherViewSet(viewsets.ModelViewSet):
     
     permission_classes = [IsAuthenticated, CanManagePayments]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    filterset_fields = ['payment_mode', 'is_adjusted', 'deposited_to_bank']
+    filterset_fields = ['payment_mode', 'deposited_to_bank', 'order', 'customer']
     search_fields = ['voucher_number', 'customer__name', 'customer__phone', 'transaction_reference']
     
     def get_serializer_class(self):
@@ -62,11 +62,35 @@ class ReceiptVoucherViewSet(viewsets.ModelViewSet):
             created_by=self.request.user
         )
     
+    def create(self, request, *args, **kwargs):
+        """Override create to return detailed response"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        
+        # Return full detail using DetailSerializer
+        instance = serializer.instance
+        detail_serializer = ReceiptVoucherDetailSerializer(instance)
+        headers = self.get_success_headers(detail_serializer.data)
+        return Response(detail_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+    
+    def update(self, request, *args, **kwargs):
+        """Override update to return detailed response"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        
+        # Return full detail using DetailSerializer
+        detail_serializer = ReceiptVoucherDetailSerializer(serializer.instance)
+        return Response(detail_serializer.data)
+    
     @action(detail=False, methods=['get'])
     def unadjusted(self, request):
         """Get all unadjusted receipt vouchers"""
         vouchers = self.get_queryset().filter(is_adjusted=False)
-        serializer = self.get_serializer(vouchers, many=True)
+        serializer = ReceiptVoucherListSerializer(vouchers, many=True)
         return Response(serializer.data)
     
     @action(detail=False, methods=['get'])
@@ -76,7 +100,7 @@ class ReceiptVoucherViewSet(viewsets.ModelViewSet):
             payment_mode='CASH',
             deposited_to_bank=False
         )
-        serializer = self.get_serializer(vouchers, many=True)
+        serializer = ReceiptVoucherListSerializer(vouchers, many=True)
         return Response(serializer.data)
 
 
@@ -87,7 +111,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
     
     permission_classes = [IsAuthenticated, CanManagePayments]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    filterset_fields = ['payment_mode', 'deposited_to_bank']
+    filterset_fields = ['payment_mode', 'deposited_to_bank', 'invoice']
     search_fields = ['payment_number', 'invoice__invoice_number', 'transaction_reference']
     
     def get_serializer_class(self):
@@ -117,6 +141,30 @@ class PaymentViewSet(viewsets.ModelViewSet):
             created_by=self.request.user
         )
     
+    def create(self, request, *args, **kwargs):
+        """Override create to return detailed response"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        
+        # Return full detail using DetailSerializer
+        instance = serializer.instance
+        detail_serializer = PaymentDetailSerializer(instance)
+        headers = self.get_success_headers(detail_serializer.data)
+        return Response(detail_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+    
+    def update(self, request, *args, **kwargs):
+        """Override update to return detailed response"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        
+        # Return full detail using DetailSerializer
+        detail_serializer = PaymentDetailSerializer(serializer.instance)
+        return Response(detail_serializer.data)
+    
     @action(detail=False, methods=['get'])
     def cash_not_deposited(self, request):
         """Get all cash payments not yet deposited to bank"""
@@ -124,7 +172,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
             payment_mode='CASH',
             deposited_to_bank=False
         )
-        serializer = self.get_serializer(payments, many=True)
+        serializer = PaymentListSerializer(payments, many=True)
         return Response(serializer.data)
     
     @action(detail=False, methods=['get'])
@@ -138,7 +186,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
             )
         
         payments = self.get_queryset().filter(invoice_id=invoice_id)
-        serializer = self.get_serializer(payments, many=True)
+        serializer = PaymentListSerializer(payments, many=True)
         
         total_paid = payments.aggregate(total=Sum('amount'))['total'] or 0
         
@@ -155,7 +203,7 @@ class RefundVoucherViewSet(viewsets.ModelViewSet):
     
     permission_classes = [IsAuthenticated, CanManagePayments]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    filterset_fields = ['refund_mode']
+    filterset_fields = ['refund_mode', 'customer', 'receipt_voucher']
     search_fields = ['refund_number', 'customer__name', 'receipt_voucher__voucher_number']
     
     def get_serializer_class(self):
@@ -186,3 +234,27 @@ class RefundVoucherViewSet(viewsets.ModelViewSet):
             tenant=self.request.user.tenant,
             created_by=self.request.user
         )
+    
+    def create(self, request, *args, **kwargs):
+        """Override create to return detailed response"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        
+        # Return full detail using DetailSerializer
+        instance = serializer.instance
+        detail_serializer = RefundVoucherDetailSerializer(instance)
+        headers = self.get_success_headers(detail_serializer.data)
+        return Response(detail_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+    
+    def update(self, request, *args, **kwargs):
+        """Override update to return detailed response"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        
+        # Return full detail using DetailSerializer
+        detail_serializer = RefundVoucherDetailSerializer(serializer.instance)
+        return Response(detail_serializer.data)

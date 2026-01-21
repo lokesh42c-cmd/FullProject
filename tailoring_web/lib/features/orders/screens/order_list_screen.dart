@@ -334,7 +334,7 @@ class _OrderListScreenState extends State<OrderListScreen> {
               Expanded(
                 flex: 2,
                 child: Text(
-                  order.orderNumber,
+                  order.orderNumber ?? 'N/A',
                   style: AppTheme.bodyMediumBold.copyWith(
                     color: AppTheme.primaryBlue,
                   ),

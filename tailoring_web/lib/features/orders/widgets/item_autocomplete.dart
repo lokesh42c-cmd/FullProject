@@ -1,11 +1,12 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../items/models/item.dart';
 import '../../items/providers/item_provider.dart';
 
-/// Item Autocomplete Widget
-/// Searchable dropdown for selecting items
+/// Item Autocomplete Widget - FIXED
+/// Searchable dropdown for selecting items with debouncing
 class ItemAutocomplete extends StatefulWidget {
   final Item? initialItem;
   final Function(Item?) onItemSelected;
@@ -25,6 +26,7 @@ class ItemAutocomplete extends StatefulWidget {
 class _ItemAutocompleteState extends State<ItemAutocomplete> {
   final TextEditingController _controller = TextEditingController();
   Item? _selectedItem;
+  Timer? _debounceTimer; // ✅ FIX #3: Debounce timer
 
   @override
   void initState() {
@@ -37,6 +39,7 @@ class _ItemAutocompleteState extends State<ItemAutocomplete> {
 
   @override
   void dispose() {
+    _debounceTimer?.cancel(); // ✅ FIX #3: Cancel pending requests
     _controller.dispose();
     super.dispose();
   }
@@ -46,14 +49,40 @@ class _ItemAutocompleteState extends State<ItemAutocomplete> {
     return Autocomplete<Item>(
       displayStringForOption: (Item item) => item.name,
       optionsBuilder: (TextEditingValue textEditingValue) async {
+        // ============ CRITICAL FIX #3 ============
+        // Debounce search to prevent overlay dispose errors
         if (textEditingValue.text.isEmpty) {
           return const Iterable<Item>.empty();
         }
 
-        final provider = context.read<ItemProvider>();
-        final items = await provider.searchItems(textEditingValue.text);
+        // Cancel previous search
+        _debounceTimer?.cancel();
 
-        return items;
+        // Use completer for async debouncing
+        final completer = Completer<Iterable<Item>>();
+
+        // Wait 300ms before searching
+        _debounceTimer = Timer(const Duration(milliseconds: 300), () async {
+          if (!mounted) {
+            if (!completer.isCompleted) {
+              completer.complete(const Iterable<Item>.empty());
+            }
+            return;
+          }
+
+          try {
+            final provider = context.read<ItemProvider>();
+            final items = await provider.searchItems(textEditingValue.text);
+
+            if (!mounted || completer.isCompleted) return;
+            completer.complete(items);
+          } catch (e) {
+            if (!mounted || completer.isCompleted) return;
+            completer.complete(const Iterable<Item>.empty());
+          }
+        });
+
+        return completer.future;
       },
       onSelected: (Item item) {
         setState(() {
@@ -145,7 +174,6 @@ class _ItemAutocompleteState extends State<ItemAutocomplete> {
                                       ),
                                     ),
                                   ),
-                                  // Item type badge
                                   Container(
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 6,

@@ -100,25 +100,49 @@ class _OrderItemsTableState extends State<OrderItemsTable> {
       decoration: const BoxDecoration(color: AppTheme.backgroundGrey),
       child: Row(
         children: const [
-          Expanded(flex: 3, child: Text('ITEM', style: AppTheme.tableHeader)),
-          SizedBox(width: 80, child: Text('QTY', style: AppTheme.tableHeader)),
-          SizedBox(
-            width: 100,
-            child: Text('PRICE', style: AppTheme.tableHeader),
+          // ✅ FIX #4: Changed all SizedBox to Expanded with flex ratios
+          Expanded(flex: 5, child: Text('ITEM', style: AppTheme.tableHeader)),
+          Expanded(
+            flex: 2,
+            child: Text(
+              'QTY',
+              style: AppTheme.tableHeader,
+              textAlign: TextAlign.right,
+            ),
           ),
-          SizedBox(
-            width: 100,
-            child: Text('DISCOUNT', style: AppTheme.tableHeader),
+          Expanded(
+            flex: 2,
+            child: Text(
+              'PRICE',
+              style: AppTheme.tableHeader,
+              textAlign: TextAlign.right,
+            ),
           ),
-          SizedBox(
-            width: 80,
-            child: Text('TAX %', style: AppTheme.tableHeader),
+          Expanded(
+            flex: 2,
+            child: Text(
+              'DISCOUNT',
+              style: AppTheme.tableHeader,
+              textAlign: TextAlign.right,
+            ),
           ),
-          SizedBox(
-            width: 100,
-            child: Text('TOTAL', style: AppTheme.tableHeader),
+          Expanded(
+            flex: 2,
+            child: Text(
+              'TAX %',
+              style: AppTheme.tableHeader,
+              textAlign: TextAlign.right,
+            ),
           ),
-          SizedBox(width: 40),
+          Expanded(
+            flex: 2,
+            child: Text(
+              'TOTAL',
+              style: AppTheme.tableHeader,
+              textAlign: TextAlign.right,
+            ),
+          ),
+          SizedBox(width: 48), // Only delete button stays fixed
         ],
       ),
     );
@@ -165,6 +189,15 @@ class _OrderItemRowState extends State<_OrderItemRow> {
     );
   }
 
+  @override
+  void dispose() {
+    _qtyController.dispose();
+    _priceController.dispose();
+    _discountController.dispose();
+    _taxController.dispose();
+    super.dispose();
+  }
+
   // Common function to select all text when clicking a field
   void _selectAll(TextEditingController controller) {
     controller.selection = TextSelection(
@@ -199,26 +232,41 @@ class _OrderItemRowState extends State<_OrderItemRow> {
       ),
       child: Row(
         children: [
+          // ✅ FIX #4: Changed all SizedBox to Expanded with matching flex ratios
           Expanded(
-            flex: 3,
+            flex: 5,
             child: Text(widget.item.itemDescription, style: AppTheme.bodySmall),
           ),
-          _buildField(_qtyController, 80),
-          _buildField(_priceController, 100, prefix: '₹'),
-          _buildField(_discountController, 100, prefix: '₹'),
-          _buildField(_taxController, 80, suffix: '%'),
-          SizedBox(
-            width: 100,
-            child: Text(
-              '₹${displayedTotal.toStringAsFixed(2)}',
-              textAlign: TextAlign.right,
-              style: const TextStyle(fontWeight: FontWeight.bold),
+          Expanded(flex: 2, child: _buildField(_qtyController)),
+          Expanded(flex: 2, child: _buildField(_priceController, prefix: '₹')),
+          Expanded(
+            flex: 2,
+            child: _buildField(_discountController, prefix: '₹'),
+          ),
+          Expanded(flex: 2, child: _buildField(_taxController, suffix: '%')),
+          Expanded(
+            flex: 2,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4.0),
+              child: Text(
+                '₹${displayedTotal.toStringAsFixed(2)}',
+                textAlign: TextAlign.right,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline, size: 18),
-            color: AppTheme.danger,
-            onPressed: widget.onDelete,
+          SizedBox(
+            width: 48,
+            child: IconButton(
+              icon: const Icon(Icons.delete_outline, size: 18),
+              color: AppTheme.danger,
+              onPressed: widget.onDelete,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
           ),
         ],
       ),
@@ -226,26 +274,41 @@ class _OrderItemRowState extends State<_OrderItemRow> {
   }
 
   Widget _buildField(
-    TextEditingController controller,
-    double width, {
+    TextEditingController controller, {
     String? prefix,
     String? suffix,
   }) {
-    return SizedBox(
-      width: width,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4.0),
-        child: TextField(
-          controller: controller,
-          onTap: () => _selectAll(controller), // Fixes the 50/5 zero issue
-          onChanged: (_) => _update(),
-          textAlign: TextAlign.right,
-          keyboardType: TextInputType.number,
-          decoration: InputDecoration(
-            isDense: true,
-            contentPadding: const EdgeInsets.all(8),
-            prefixText: prefix,
-            suffixText: suffix,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4.0),
+      child: TextField(
+        controller: controller,
+        onTap: () => _selectAll(controller), // Fixes the 50/5 zero issue
+        onChanged: (_) => _update(),
+        textAlign: TextAlign.right,
+        style: const TextStyle(fontSize: 13),
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        inputFormatters: [
+          FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+        ],
+        decoration: InputDecoration(
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 8,
+            vertical: 8,
+          ),
+          prefixText: prefix,
+          suffixText: suffix,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(4),
+            borderSide: const BorderSide(color: AppTheme.borderLight),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(4),
+            borderSide: const BorderSide(color: AppTheme.borderLight),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(4),
+            borderSide: const BorderSide(color: AppTheme.primaryBlue),
           ),
         ),
       ),

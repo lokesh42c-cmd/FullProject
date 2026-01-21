@@ -42,7 +42,21 @@ class OrderService {
         queryParameters: queryParams,
       );
 
-      final List<dynamic> data = response.data as List<dynamic>;
+      // Handle both paginated and non-paginated responses
+      final responseData = response.data;
+      final List<dynamic> data;
+
+      if (responseData is List) {
+        // Direct list response
+        data = responseData;
+      } else if (responseData is Map && responseData.containsKey('results')) {
+        // Paginated response {count, next, previous, results}
+        data = responseData['results'] as List<dynamic>;
+      } else {
+        // Unexpected format
+        throw Exception('Unexpected API response format');
+      }
+
       return data
           .map((json) => Order.fromJson(json as Map<String, dynamic>))
           .toList();

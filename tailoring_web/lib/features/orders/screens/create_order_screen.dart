@@ -11,6 +11,7 @@ import '../models/order_item.dart';
 import '../widgets/order_items_table.dart';
 import '../widgets/order_summary_panel.dart';
 import '../widgets/reference_photos_section.dart';
+import 'order_detail_screen.dart';
 
 /// Create Order Screen - Final Version
 class CreateOrderScreen extends StatefulWidget {
@@ -56,6 +57,11 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
 
   Future<void> _saveOrder() async {
     if (_selectedCustomer == null || _orderItems.isEmpty) return;
+
+    print('🟢 [ORDER CREATION] Starting order creation...');
+    print('📝 Customer ID: ${_selectedCustomer!.id}');
+    print('📝 Items count: ${_orderItems.length}');
+
     setState(() => _isLoading = true);
 
     try {
@@ -68,14 +74,17 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
           double tax = lineNet * (item.taxPercentage / 100);
           grandTotal += (lineNet + tax);
         }
+        print('📦 Item: ${item.itemDescription}, Total: $grandTotal');
       }
 
+      print('💰 Grand Total calculated: $grandTotal');
+
       final order = Order(
-        orderNumber: '',
+        // ✅ FIX #2: Removed orderNumber - backend generates it
         customerId: _selectedCustomer!.id!,
         orderDate: DateTime.now(),
         expectedDeliveryDate: _expectedDeliveryDate,
-        orderStatus: 'PENDING',
+        orderStatus: 'DRAFT',
         deliveryStatus: 'NOT_STARTED',
         estimatedTotal: grandTotal,
         orderSummary: _orderSummaryController.text,
@@ -83,15 +92,27 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         items: _orderItems,
       );
 
+      print('📤 Sending order to backend...');
       final createdOrder = await context.read<OrderProvider>().createOrder(
         order,
       );
 
+      print('📥 Response received from backend');
+
       if (createdOrder != null) {
+        print('✅ Order created successfully!');
+        print('📋 Order ID: ${createdOrder.id}');
+        print(
+          '📋 Order Number: ${createdOrder.orderNumber ?? "NOT GENERATED"}',
+        );
+        print('💰 Order Total: ${createdOrder.estimatedTotal}');
+
         // Upload reference photos if any (web compatible - uses bytes)
         if (_referencePhotos.isNotEmpty && createdOrder.id != null) {
+          print('📸 Uploading ${_referencePhotos.length} photos...');
           for (final photo in _referencePhotos) {
             if (photo.imageBytes != null) {
+              print('📸 Uploading photo: ${photo.fileName}');
               await context.read<OrderProvider>().uploadReferencePhoto(
                 createdOrder.id!,
                 photo.imageBytes!,
@@ -99,20 +120,60 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
               );
             }
           }
+          print('✅ All photos uploaded');
         }
 
         if (mounted) {
+          print('🚀 Navigating to order detail screen...');
+          // Navigate to order detail screen
+          try {
+            await Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) =>
+                    OrderDetailScreen(orderId: createdOrder.id!),
+              ),
+            );
+            print('✅ Navigation completed');
+          } catch (e) {
+            print('❌ Navigation error: $e');
+            print('📍 Error type: ${e.runtimeType}');
+            // If navigation fails, show success and go back
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Order created: Check orders list'),
+                  backgroundColor: AppTheme.success,
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+              Navigator.pop(context, true);
+            }
+          }
+        }
+      } else {
+        print('❌ Order creation returned null');
+        print('❌ Error message: ${context.read<OrderProvider>().errorMessage}');
+        // Show error if creation failed
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Order created successfully'),
-              backgroundColor: AppTheme.success,
+            SnackBar(
+              content: Text(
+                context.read<OrderProvider>().errorMessage ??
+                    'Failed to create order',
+              ),
+              backgroundColor: AppTheme.danger,
             ),
           );
-          Navigator.pop(context, true);
         }
       }
+    } catch (e, stackTrace) {
+      print('❌ EXCEPTION during order creation: $e');
+      print('📍 Exception type: ${e.runtimeType}');
+      print('📚 Stack trace: $stackTrace');
     } finally {
       if (mounted) setState(() => _isLoading = false);
+      print('🏁 Order creation process completed');
     }
   }
 
@@ -269,8 +330,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 ),
               ),
               const SizedBox(width: 16),
-              Expanded(
-                flex: 2,
+              SizedBox(
+                width: 180,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -305,11 +366,14 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                         ),
                         child: Row(
                           children: [
-                            Text(
-                              '${_expectedDeliveryDate.day}/${_expectedDeliveryDate.month}/${_expectedDeliveryDate.year}',
-                              style: AppTheme.bodyMedium,
+                            Flexible(
+                              child: Text(
+                                '${_expectedDeliveryDate.day}/${_expectedDeliveryDate.month}/${_expectedDeliveryDate.year}',
+                                style: AppTheme.bodyMedium,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                            const Spacer(),
+                            const SizedBox(width: 8),
                             const Icon(
                               Icons.calendar_month,
                               size: 16,
@@ -336,22 +400,23 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                     color: AppTheme.danger,
                   ),
                   const SizedBox(width: 6),
-                  const Text(
-                    'No measurements found.',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: AppTheme.danger,
-                      fontWeight: FontWeight.w600,
+                  Flexible(
+                    child: Text(
+                      'No measurements found. ',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.danger,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 8),
                   InkWell(
                     onTap: () => Navigator.pushNamed(
                       context,
                       '/customers/${_selectedCustomer!.id}',
                     ),
                     child: const Text(
-                      'Add in Customer Profile →',
+                      'Add Now →',
                       style: TextStyle(
                         fontSize: 11,
                         color: AppTheme.primaryBlue,
