@@ -43,7 +43,9 @@ INSTALLED_APPS = [
    # 'inventory.apps.InventoryConfig',
     'employees.apps.EmployeesConfig',
     'invoicing',
-    'financials'
+    'financials',
+    'appointments',
+
 
    # 'purchase_management',
 ]

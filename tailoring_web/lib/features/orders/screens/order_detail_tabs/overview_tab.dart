@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:tailoring_web/core/theme/app_theme.dart';
 import 'package:tailoring_web/core/api/api_client.dart';
 import 'package:tailoring_web/features/orders/widgets/dialogs/edit_order_details_dialog.dart';
+import 'package:tailoring_web/features/orders/widgets/dialogs/order_qr_dialog.dart';
 
 class OverviewTab extends StatelessWidget {
   final Map<String, dynamic> orderData;
@@ -141,20 +142,38 @@ class OverviewTab extends StatelessWidget {
       children: [
         SizedBox(
           width: 220,
-          child: Card(
-            elevation: 0,
-            shape: RoundedRectangleBorder(
+          child: Builder(
+            builder: (context) => InkWell(
+              onTap: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => OrderQrDialog(orderData: orderData),
+                );
+              },
               borderRadius: BorderRadius.circular(8),
-              side: BorderSide(color: Colors.grey.shade300),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: const [
-                  Icon(Icons.qr_code, size: 80),
-                  SizedBox(height: 8),
-                  Text('Tap to view'),
-                ],
+              child: Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  side: BorderSide(color: Colors.grey.shade300),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: const [
+                      Icon(
+                        Icons.qr_code,
+                        size: 80,
+                        color: AppTheme.primaryBlue,
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'Tap to view',
+                        style: TextStyle(color: AppTheme.primaryBlue),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),

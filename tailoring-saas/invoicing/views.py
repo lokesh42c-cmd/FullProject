@@ -27,7 +27,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     
     permission_classes = [IsAuthenticated, CanManageOrders]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    filterset_fields = ['status', 'payment_status', 'tax_type']
+    filterset_fields = ['status', 'payment_status', 'tax_type', 'customer', 'order']
     search_fields = ['invoice_number', 'customer__name', 'customer__phone', 'billing_name']
     
     def get_serializer_class(self):

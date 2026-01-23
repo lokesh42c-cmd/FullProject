@@ -61,40 +61,24 @@ class ReceiptVoucher {
     this.updatedAt,
   });
 
-  // GETTERS used by IssueRefundDialog
-  String get formattedReceiptDate {
-    return '${receiptDate.day.toString().padLeft(2, '0')}-${receiptDate.month.toString().padLeft(2, '0')}-${receiptDate.year}';
-  }
-
-  String get formattedTotalAmount {
-    return '₹${totalAmount.toStringAsFixed(2)}';
-  }
-
   factory ReceiptVoucher.fromJson(Map<String, dynamic> json) {
-    double toDouble(dynamic val) {
-      if (val == null) return 0.0;
-      if (val is num) return val.toDouble();
-      return double.tryParse(val.toString()) ?? 0.0;
-    }
-
     return ReceiptVoucher(
       id: json['id'] as int?,
-      voucherNumber: json['voucher_number'] as String? ?? 'N/A',
+      voucherNumber: json['voucher_number'] as String,
       receiptDate: DateTime.parse(json['receipt_date'] as String),
       customer: json['customer'] as int,
       customerName: json['customer_name'] as String?,
       customerPhone: json['customer_phone'] as String?,
       order: json['order'] as int?,
       orderNumber: json['order_number'] as String?,
-      advanceAmount: toDouble(json['advance_amount']),
-      gstRate: toDouble(json['gst_rate']),
+      advanceAmount: (json['advance_amount'] as num).toDouble(),
+      gstRate: (json['gst_rate'] as num?)?.toDouble() ?? 0.0,
       taxType: json['tax_type'] as String? ?? 'CGST_SGST',
-      cgstAmount: toDouble(json['cgst_amount']),
-      sgstAmount: toDouble(json['sgst_amount']),
-      igstAmount: toDouble(json['igst_amount']),
-      // Robust totalAmount mapping to solve the display issue
-      totalAmount: toDouble(json['total_amount'] ?? json['advance_amount']),
-      paymentMode: json['payment_mode'] as String? ?? 'CASH',
+      cgstAmount: (json['cgst_amount'] as num?)?.toDouble() ?? 0.0,
+      sgstAmount: (json['sgst_amount'] as num?)?.toDouble() ?? 0.0,
+      igstAmount: (json['igst_amount'] as num?)?.toDouble() ?? 0.0,
+      totalAmount: (json['total_amount'] as num).toDouble(),
+      paymentMode: json['payment_mode'] as String,
       paymentModeDisplay: json['payment_mode_display'] as String?,
       transactionReference: json['transaction_reference'] as String?,
       depositedToBank: json['deposited_to_bank'] as bool? ?? false,
@@ -102,8 +86,8 @@ class ReceiptVoucher {
           ? DateTime.parse(json['deposit_date'] as String)
           : null,
       isAdjusted: json['is_adjusted'] as bool? ?? false,
-      adjustedAmount: toDouble(json['adjusted_amount']),
-      remainingAmount: toDouble(json['remaining_amount']),
+      adjustedAmount: (json['adjusted_amount'] as num?)?.toDouble() ?? 0.0,
+      remainingAmount: (json['remaining_amount'] as num?)?.toDouble() ?? 0.0,
       notes: json['notes'] as String?,
       isIssued: json['is_issued'] as bool? ?? false,
       createdBy: json['created_by'] as int?,
@@ -124,11 +108,18 @@ class ReceiptVoucher {
       'receipt_date': receiptDate.toIso8601String().split('T')[0],
       'advance_amount': advanceAmount,
       'gst_rate': gstRate,
-      'total_amount': totalAmount,
       'payment_mode': paymentMode,
       if (transactionReference != null && transactionReference!.isNotEmpty)
         'transaction_reference': transactionReference,
       if (notes != null && notes!.isNotEmpty) 'notes': notes,
     };
+  }
+
+  String get formattedReceiptDate {
+    return '${receiptDate.day.toString().padLeft(2, '0')}-${receiptDate.month.toString().padLeft(2, '0')}-${receiptDate.year}';
+  }
+
+  String get formattedTotalAmount {
+    return '₹${totalAmount.toStringAsFixed(2)}';
   }
 }

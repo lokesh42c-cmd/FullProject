@@ -1,11 +1,12 @@
 import 'package:tailoring_web/core/api/api_client.dart';
 import '../models/receipt_voucher.dart';
 import '../models/refund_voucher.dart';
+import '../models/invoice_payment.dart';
 
 class PaymentService {
   final ApiClient _apiClient = ApiClient();
 
-  // ==================== RECEIPT VOUCHERS ====================
+  // ==================== RECEIPT VOUCHERS (Advances) ====================
 
   /// Create a new receipt voucher (advance payment)
   Future<ReceiptVoucher> createReceiptVoucher(ReceiptVoucher voucher) async {
@@ -29,19 +30,11 @@ class PaymentService {
         queryParameters: {'order': orderId},
       );
 
-      // Handle paginated response
-      if (response.data is Map && response.data['results'] != null) {
-        final results = response.data['results'] as List;
-        return results.map((json) => ReceiptVoucher.fromJson(json)).toList();
-      }
-
-      // Handle direct list response (non-paginated)
       if (response.data is List) {
         return (response.data as List)
             .map((json) => ReceiptVoucher.fromJson(json))
             .toList();
       }
-
       return [];
     } catch (e) {
       print('Error fetching receipt vouchers: $e');
@@ -75,13 +68,6 @@ class PaymentService {
     try {
       final response = await _apiClient.get('financials/receipts/unadjusted/');
 
-      // Handle paginated response
-      if (response.data is Map && response.data['results'] != null) {
-        final results = response.data['results'] as List;
-        return results.map((json) => ReceiptVoucher.fromJson(json)).toList();
-      }
-
-      // Handle direct list response
       if (response.data is List) {
         return (response.data as List)
             .map((json) => ReceiptVoucher.fromJson(json))
@@ -90,6 +76,85 @@ class PaymentService {
       return [];
     } catch (e) {
       print('Error fetching unadjusted receipts: $e');
+      rethrow;
+    }
+  }
+
+  // ==================== INVOICE PAYMENTS ====================
+
+  /// Create a new payment against invoice
+  Future<InvoicePayment> createInvoicePayment(InvoicePayment payment) async {
+    try {
+      final response = await _apiClient.post(
+        'financials/payments/',
+        data: payment.toJson(),
+      );
+      return InvoicePayment.fromJson(response.data);
+    } catch (e) {
+      print('Error creating invoice payment: $e');
+      rethrow;
+    }
+  }
+
+  /// Get all payments for an invoice
+  Future<List<InvoicePayment>> getInvoicePaymentsByInvoice(
+    int invoiceId,
+  ) async {
+    try {
+      final response = await _apiClient.get(
+        'financials/payments/',
+        queryParameters: {'invoice': invoiceId},
+      );
+
+      if (response.data is List) {
+        return (response.data as List)
+            .map((json) => InvoicePayment.fromJson(json))
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      print('Error fetching invoice payments: $e');
+      rethrow;
+    }
+  }
+
+  /// Get all payments for an order (via invoices)
+  Future<List<InvoicePayment>> getInvoicePaymentsByOrder(int orderId) async {
+    try {
+      final response = await _apiClient.get(
+        'financials/payments/',
+        queryParameters: {'invoice__order': orderId},
+      );
+
+      if (response.data is List) {
+        return (response.data as List)
+            .map((json) => InvoicePayment.fromJson(json))
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      print('Error fetching invoice payments by order: $e');
+      rethrow;
+    }
+  }
+
+  /// Get a single payment by ID
+  Future<InvoicePayment> getInvoicePaymentById(int id) async {
+    try {
+      final response = await _apiClient.get('financials/payments/$id/');
+      return InvoicePayment.fromJson(response.data);
+    } catch (e) {
+      print('Error fetching invoice payment: $e');
+      rethrow;
+    }
+  }
+
+  /// Delete a payment
+  Future<void> deleteInvoicePayment(int id) async {
+    try {
+      await _apiClient.delete('financials/payments/$id/');
+    } catch (e) {
+      print('Error deleting invoice payment: $e');
       rethrow;
     }
   }
@@ -120,13 +185,6 @@ class PaymentService {
         queryParameters: {'receipt_voucher': receiptVoucherId},
       );
 
-      // Handle paginated response
-      if (response.data is Map && response.data['results'] != null) {
-        final results = response.data['results'] as List;
-        return results.map((json) => RefundVoucher.fromJson(json)).toList();
-      }
-
-      // Handle direct list response
       if (response.data is List) {
         return (response.data as List)
             .map((json) => RefundVoucher.fromJson(json))
@@ -149,13 +207,6 @@ class PaymentService {
         queryParameters: {'customer': customerId},
       );
 
-      // Handle paginated response
-      if (response.data is Map && response.data['results'] != null) {
-        final results = response.data['results'] as List;
-        return results.map((json) => RefundVoucher.fromJson(json)).toList();
-      }
-
-      // Handle direct list response
       if (response.data is List) {
         return (response.data as List)
             .map((json) => RefundVoucher.fromJson(json))

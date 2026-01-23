@@ -19,6 +19,8 @@ urlpatterns = [
     # path('api/purchase/', include('purchase_management.urls')),
     path('api/invoicing/', include('invoicing.urls')),
     path('api/financials/', include('financials.urls')),
+    path('api/appointments/', include('appointments.urls')),
+
 ]
 
 # Serve media files in development

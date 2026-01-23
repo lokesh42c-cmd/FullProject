@@ -39,9 +39,6 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
   void initState() {
     super.initState();
     _paymentDate = DateTime.now().toIso8601String().split('T')[0];
-
-    // Default GST rate if you usually have one
-    _gstRate = 5.0;
   }
 
   @override
@@ -52,25 +49,9 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
     super.dispose();
   }
 
-  // Robust helper to get the total amount from various possible keys
-  double _getOrderTotal() {
-    return _getDoubleValue(widget.orderData['estimated_total']) != 0.0
-        ? _getDoubleValue(widget.orderData['estimated_total'])
-        : _getDoubleValue(widget.orderData['grand_total']);
-  }
-
-  double _getAdvancePaid() {
-    return _getDoubleValue(widget.orderData['advance_received']) != 0.0
-        ? _getDoubleValue(widget.orderData['advance_received'])
-        : _getDoubleValue(widget.orderData['paid_amount']);
-  }
-
-  double _calculateBalanceDue() {
-    return _getOrderTotal() - _getAdvancePaid();
-  }
-
   @override
   Widget build(BuildContext context) {
+    // Check if this is an invoice payment or advance payment
     final bool isInvoicePayment = widget.invoiceId != null;
     final String title = isInvoicePayment
         ? 'Record Payment'
@@ -87,6 +68,7 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
         constraints: const BoxConstraints(maxHeight: 700),
         child: Column(
           children: [
+            // Header
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -130,6 +112,8 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
                 ],
               ),
             ),
+
+            // Content
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(20),
@@ -138,8 +122,12 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Balance Summary
                       _buildBalanceSummary(balanceDue),
+
                       const SizedBox(height: 20),
+
+                      // Payment Date
                       TextFormField(
                         initialValue: _paymentDate,
                         decoration: const InputDecoration(
@@ -164,7 +152,10 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
                           }
                         },
                       ),
+
                       const SizedBox(height: 16),
+
+                      // Payment Amount
                       TextFormField(
                         controller: _amountController,
                         decoration: InputDecoration(
@@ -173,11 +164,9 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
                               : 'Advance Amount *',
                           border: const OutlineInputBorder(),
                           prefixIcon: const Icon(Icons.currency_rupee),
-                          helperText:
-                              'Balance Due: ₹${balanceDue.toStringAsFixed(2)}',
+                          helperText: 'Max: ₹${balanceDue.toStringAsFixed(2)}',
                         ),
                         keyboardType: TextInputType.number,
-                        onChanged: (v) => setState(() {}),
                         validator: (value) {
                           if (value == null || value.isEmpty) {
                             return 'Please enter amount';
@@ -186,14 +175,16 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
                           if (amount == null || amount <= 0) {
                             return 'Please enter valid amount';
                           }
-                          // Allow a tiny margin for double precision errors
-                          if (amount > (balanceDue + 0.01)) {
+                          if (amount > balanceDue) {
                             return 'Amount cannot exceed balance due';
                           }
                           return null;
                         },
                       ),
+
                       const SizedBox(height: 16),
+
+                      // Payment Mode
                       DropdownButtonFormField<String>(
                         value: _paymentMode,
                         decoration: const InputDecoration(
@@ -218,7 +209,10 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
                           setState(() => _paymentMode = value!);
                         },
                       ),
+
                       const SizedBox(height: 16),
+
+                      // Transaction Reference (for digital payments)
                       if (_paymentMode != 'CASH')
                         TextFormField(
                           controller: _referenceController,
@@ -234,7 +228,10 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
                             prefixIcon: const Icon(Icons.receipt),
                           ),
                         ),
+
                       if (_paymentMode != 'CASH') const SizedBox(height: 16),
+
+                      // GST Toggle (only for advance payments)
                       if (!isInvoicePayment) ...[
                         SwitchListTile(
                           title: const Text('Apply GST on Advance'),
@@ -248,6 +245,7 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
                             setState(() => _applyGst = value);
                           },
                         ),
+
                         if (_applyGst) ...[
                           const SizedBox(height: 16),
                           DropdownButtonFormField<double>(
@@ -270,7 +268,10 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
                           ),
                         ],
                       ],
+
                       const SizedBox(height: 16),
+
+                      // Notes
                       TextFormField(
                         controller: _notesController,
                         decoration: const InputDecoration(
@@ -280,6 +281,8 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
                         ),
                         maxLines: 2,
                       ),
+
+                      // GST Calculation Preview (for advances)
                       if (!isInvoicePayment && _applyGst) ...[
                         const SizedBox(height: 20),
                         _buildGstPreview(),
@@ -289,6 +292,8 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
                 ),
               ),
             ),
+
+            // Footer Actions
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -336,8 +341,10 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
   }
 
   Widget _buildBalanceSummary(double balanceDue) {
-    final double grandTotal = _getOrderTotal();
-    final double advanceReceived = _getAdvancePaid();
+    final double grandTotal = _getDoubleValue(widget.orderData['grand_total']);
+    final double advanceReceived = _getDoubleValue(
+      widget.orderData['advance_received'],
+    );
 
     return Card(
       elevation: 0,
@@ -418,7 +425,7 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'GST Calculation (Preview)',
+              'GST Calculation',
               style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
@@ -426,7 +433,7 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
             _gstRow('CGST (${(_gstRate / 2).toStringAsFixed(1)}%)', cgst),
             _gstRow('SGST (${(_gstRate / 2).toStringAsFixed(1)}%)', sgst),
             const Divider(height: 16),
-            _gstRow('Total including GST', total, isBold: true),
+            _gstRow('Total Amount', total, isBold: true),
           ],
         ),
       ),
@@ -458,6 +465,14 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
     );
   }
 
+  double _calculateBalanceDue() {
+    final double grandTotal = _getDoubleValue(widget.orderData['grand_total']);
+    final double advanceReceived = _getDoubleValue(
+      widget.orderData['advance_received'],
+    );
+    return grandTotal - advanceReceived;
+  }
+
   Future<void> _recordPayment() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -468,8 +483,9 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
       final bool isInvoicePayment = widget.invoiceId != null;
 
       if (isInvoicePayment) {
+        // Create InvoicePayment (against invoice)
         final invoicePayment = InvoicePayment(
-          paymentNumber: '',
+          paymentNumber: '', // Auto-generated
           paymentDate: _paymentDate,
           invoice: widget.invoiceId!,
           amount: amount,
@@ -484,18 +500,14 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
 
         await _paymentService.createInvoicePayment(invoicePayment);
       } else {
-        // Fix for ReceiptVoucher Error: calculate totalAmount
-        final double gstAmount = _applyGst ? (amount * _gstRate / 100) : 0.0;
-        final double totalWithGst = amount + gstAmount;
-
+        // Create Receipt Voucher (advance)
         final receiptVoucher = ReceiptVoucher(
-          voucherNumber: '',
-          receiptDate: DateTime.parse(_paymentDate),
+          voucherNumber: '', // Auto-generated
+          receiptDate: _paymentDate,
           customer: widget.orderData['customer'],
           order: widget.orderData['id'],
           advanceAmount: amount,
           gstRate: _applyGst ? _gstRate : 0.0,
-          totalAmount: totalWithGst, // Pass calculated total here
           paymentMode: _paymentMode,
           transactionReference: _referenceController.text.isNotEmpty
               ? _referenceController.text

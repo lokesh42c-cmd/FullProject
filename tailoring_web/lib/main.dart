@@ -28,6 +28,7 @@ import 'package:tailoring_web/features/orders/screens/create_order_screen.dart';
 import 'package:tailoring_web/features/customer_payments/providers/payment_provider.dart';
 import 'package:tailoring_web/features/customer_payments/services/payment_service.dart';
 import 'package:tailoring_web/features/customer_payments/screens/payments_list_screen.dart';
+import 'features/appointments/screens/appointment_list_screen.dart';
 
 // NEW: Purchase Management Imports
 // import 'package:tailoring_web/features/purchase_management/providers/vendor_provider.dart';
@@ -123,6 +124,7 @@ class TailoringWebApp extends StatelessWidget {
             return OrderDetailScreen(orderId: orderId);
           },
           '/payments': (context) => const PaymentsListScreen(),
+          '/appointments': (context) => const AppointmentListScreen(),
 
           // NEW: Purchase Management Routes
           // '/purchase/vendors': (context) => const VendorListScreen(),

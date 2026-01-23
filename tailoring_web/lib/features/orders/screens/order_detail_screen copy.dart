@@ -5,8 +5,6 @@ import '../../../core/layouts/main_layout.dart';
 import 'order_detail_tabs/overview_tab.dart';
 import 'order_detail_tabs/items_and_payments_tab.dart';
 import 'order_detail_tabs/measurements_tab.dart';
-import '../widgets/dialogs/cancel_order_dialog.dart';
-import '../services/print_service.dart';
 
 class OrderDetailScreen extends StatefulWidget {
   final int orderId;
@@ -112,7 +110,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
     final orderNumber = _orderData!['order_number'] ?? 'N/A';
     final isLocked = _orderData!['is_locked'] ?? false;
     final isVoid = _orderData!['is_void'] ?? false;
-    final isCancelled = (_orderData!['order_status'] ?? '') == 'CANCELLED';
 
     return Column(
       children: [
@@ -221,21 +218,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
                 label: 'Print (Workshop)',
                 onPressed: _onPrintWorkshopCopy,
               ),
-              if (!isVoid && !isCancelled)
-                _buildActionButton(
-                  icon: Icons.receipt_long,
-                  label: 'Create Invoice',
-                  onPressed: _onCreateInvoice,
-                  isPrimary: true,
-                ),
-              if (!isVoid && !isCancelled)
-                _buildActionButton(
-                  icon: Icons.cancel_outlined,
-                  label: 'Cancel Order',
-                  onPressed: _onCancelOrder,
-                  isDanger: true,
-                ),
-              if (!isVoid && !isCancelled)
+              _buildActionButton(
+                icon: Icons.receipt_long,
+                label: 'Create Invoice',
+                onPressed: _onCreateInvoice,
+                isPrimary: true,
+              ),
+              if (!isVoid)
                 _buildActionButton(
                   icon: Icons.block,
                   label: 'Void Order',
@@ -245,26 +234,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
             ],
           ),
         ),
-
-        // Cancelled Banner
-        if (isCancelled)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            color: AppTheme.danger.withOpacity(0.1),
-            child: Row(
-              children: [
-                const Icon(Icons.cancel, size: 20, color: AppTheme.danger),
-                const SizedBox(width: 12),
-                Text(
-                  'This order has been cancelled',
-                  style: AppTheme.bodyMedium.copyWith(
-                    color: AppTheme.danger,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
 
         // Void Banner
         if (isVoid)
@@ -305,7 +274,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
           ),
 
         // Lock Banner
-        if (isLocked && !isVoid && !isCancelled)
+        if (isLocked && !isVoid)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             color: AppTheme.warning.withOpacity(0.1),
@@ -356,12 +325,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
             children: [
               OverviewTab(
                 orderData: _orderData!,
-                isLocked: isLocked || isVoid || isCancelled,
+                isLocked: isLocked || isVoid,
                 onRefresh: _loadOrderDetails,
               ),
               ItemsAndPaymentsTab(
                 orderData: _orderData!,
-                isLocked: isLocked || isVoid || isCancelled,
+                isLocked: isLocked || isVoid,
                 onRefresh: _loadOrderDetails,
               ),
               MeasurementsTab(orderData: _orderData!),
@@ -404,30 +373,20 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
   }
 
   void _onPrintCustomerCopy() {
-    if (_orderData != null) {
-      PrintService.printCustomerCopy(_orderData!);
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Print Customer Copy - To be implemented')),
+    );
   }
 
   void _onPrintWorkshopCopy() {
-    if (_orderData != null) {
-      PrintService.printWorkshopCopy(_orderData!);
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Print Workshop Copy - To be implemented')),
+    );
   }
 
   void _onCreateInvoice() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Create Invoice - To be implemented')),
-    );
-  }
-
-  void _onCancelOrder() {
-    showDialog(
-      context: context,
-      builder: (context) => CancelOrderDialog(
-        orderData: _orderData!,
-        onOrderCancelled: _loadOrderDetails,
-      ),
     );
   }
 
