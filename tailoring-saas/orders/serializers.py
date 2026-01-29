@@ -1,8 +1,7 @@
 """
-Orders app serializers - Complete with Inventory
-Date: 2026-01-09
-FIXED: Order number generation moved to serializer
-FIXED v2: Tenant access from request.user.tenant
+Orders app serializers - Complete with Inventory + Invoice Integration
+Date: 2026-01-27
+FIXED: Added refund subtraction in total_paid calculation
 """
 
 from rest_framework import serializers
@@ -146,6 +145,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
     
     item_name = serializers.CharField(source='item.name', read_only=True)
     item_barcode = serializers.CharField(source='item.barcode', read_only=True)
+    item_type_display = serializers.CharField(source='get_item_type_display', read_only=True)
     subtotal = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     tax_amount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     total_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
@@ -153,7 +153,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrderItem
         fields = [
-            'id', 'item_type', 'item', 'item_name', 'item_barcode', 'item_description',
+            'id', 'item_type', 'item_type_display', 'item', 'item_name', 'item_barcode', 'item_description',
             'quantity', 'unit_price', 'discount', 'tax_percentage',
             'subtotal', 'tax_amount', 'total_price',
             'status', 'notes'
@@ -170,15 +170,70 @@ class OrderListSerializer(serializers.ModelSerializer):
     order_status_display = serializers.CharField(source='get_order_status_display', read_only=True)
     delivery_status_display = serializers.CharField(source='get_delivery_status_display', read_only=True)
     
+    # Invoice fields
+    invoice_id = serializers.SerializerMethodField()
+    invoice_number = serializers.SerializerMethodField()
+    total_paid = serializers.SerializerMethodField()
+    
     class Meta:
         model = Order
         fields = [
             'id', 'order_number', 'customer', 'customer_name', 'customer_phone',
             'order_date', 'expected_delivery_date', 'actual_delivery_date',
             'order_status', 'order_status_display',
-            'delivery_status', 'delivery_status_display','priority',
-            'estimated_total', 'is_locked', 'created_at'
+            'delivery_status', 'delivery_status_display', 'priority',
+            'estimated_total', 'total_paid', 'is_locked', 
+            'invoice_id', 'invoice_number',
+            'created_at'
         ]
+    
+    def get_invoice_id(self, obj):
+        """Get invoice ID if exists"""
+        try:
+            if hasattr(obj, 'invoice') and obj.invoice:
+                return obj.invoice.id
+        except:
+            pass
+        return None
+    
+    def get_invoice_number(self, obj):
+        """Get invoice number if exists"""
+        try:
+            if hasattr(obj, 'invoice') and obj.invoice:
+                return obj.invoice.invoice_number
+        except:
+            pass
+        return None
+    
+    def get_total_paid(self, obj):
+        """Calculate total paid (receipts + invoice payments - refunds)"""
+        from financials.models import ReceiptVoucher, Payment, RefundVoucher
+        
+        total = Decimal('0.00')
+        
+        # Add receipt vouchers (advances)
+        receipts = ReceiptVoucher.objects.filter(order=obj, tenant=obj.tenant)
+        for receipt in receipts:
+            total += receipt.total_amount
+        
+        # ✅ CRITICAL: Subtract refunds
+        refunds = RefundVoucher.objects.filter(receipt_voucher__order=obj, tenant=obj.tenant)
+        for refund in refunds:
+            total -= refund.total_refund
+        
+        # Add invoice payments if invoice exists
+        try:
+            if hasattr(obj, 'invoice') and obj.invoice:
+                payments = Payment.objects.filter(
+                    invoice=obj.invoice, 
+                    tenant=obj.tenant
+                )
+                for payment in payments:
+                    total += payment.amount
+        except:
+            pass
+        
+        return total
 
 
 class OrderDetailSerializer(serializers.ModelSerializer):
@@ -192,6 +247,11 @@ class OrderDetailSerializer(serializers.ModelSerializer):
     is_overdue = serializers.BooleanField(read_only=True)
     days_until_delivery = serializers.IntegerField(read_only=True)
     
+    # Invoice fields
+    invoice_id = serializers.SerializerMethodField()
+    invoice_number = serializers.SerializerMethodField()
+    total_paid = serializers.SerializerMethodField()
+    
     class Meta:
         model = Order
         fields = [
@@ -199,11 +259,60 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             'order_date', 'expected_delivery_date', 'actual_delivery_date',
             'order_status', 'order_status_display',
             'delivery_status', 'delivery_status_display',
-            'estimated_total', 'payment_terms',
+            'estimated_total', 'total_paid', 'payment_terms',
             'order_summary', 'customer_instructions',
-            'is_locked', 'is_overdue', 'days_until_delivery','priority',
+            'is_locked', 'is_overdue', 'days_until_delivery', 'priority',
+            'invoice_id', 'invoice_number',
             'items', 'created_by', 'updated_by', 'created_at', 'updated_at'
         ]
+    
+    def get_invoice_id(self, obj):
+        """Get invoice ID if exists"""
+        try:
+            if hasattr(obj, 'invoice') and obj.invoice:
+                return obj.invoice.id
+        except:
+            pass
+        return None
+    
+    def get_invoice_number(self, obj):
+        """Get invoice number if exists"""
+        try:
+            if hasattr(obj, 'invoice') and obj.invoice:
+                return obj.invoice.invoice_number
+        except:
+            pass
+        return None
+    
+    def get_total_paid(self, obj):
+        """Calculate total paid (receipts + invoice payments - refunds)"""
+        from financials.models import ReceiptVoucher, Payment, RefundVoucher
+        
+        total = Decimal('0.00')
+        
+        # Add receipt vouchers (advances)
+        receipts = ReceiptVoucher.objects.filter(order=obj, tenant=obj.tenant)
+        for receipt in receipts:
+            total += receipt.total_amount
+        
+        # ✅ CRITICAL: Subtract refunds
+        refunds = RefundVoucher.objects.filter(receipt_voucher__order=obj, tenant=obj.tenant)
+        for refund in refunds:
+            total -= refund.total_refund
+        
+        # Add invoice payments if invoice exists
+        try:
+            if hasattr(obj, 'invoice') and obj.invoice:
+                payments = Payment.objects.filter(
+                    invoice=obj.invoice, 
+                    tenant=obj.tenant
+                )
+                for payment in payments:
+                    total += payment.amount
+        except:
+            pass
+        
+        return total
 
 
 class OrderCreateSerializer(serializers.ModelSerializer):
@@ -215,7 +324,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             'customer', 'order_date', 'expected_delivery_date', 'actual_delivery_date',
-            'order_status', 'delivery_status', 'estimated_total', 'payment_terms','priority',
+            'order_status', 'delivery_status', 'estimated_total', 'payment_terms', 'priority',
             'order_summary', 'customer_instructions', 'items'
         ]
     
@@ -224,21 +333,16 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         
         items_data = validated_data.pop('items', [])
         
-        # ============ CRITICAL FIX #1 - v2 ============
-        # Generate order_number HERE in serializer BEFORE save
-        # FIXED: Get tenant from request.user.tenant instead of request.tenant
+        # Generate order_number
         if 'order_number' not in validated_data or not validated_data.get('order_number'):
-            # Get tenant from user - this is the correct way for multi-tenant apps
             request = self.context.get('request')
             if request and hasattr(request.user, 'tenant'):
                 tenant = request.user.tenant
             else:
-                # Fallback: This shouldn't happen, but handle gracefully
                 raise serializers.ValidationError("User tenant not found")
             
             year_month = timezone.now().strftime('%Y%m')
             
-            # Get last order number for this tenant and month
             last_order = Order.objects.filter(
                 tenant=tenant,
                 order_number__startswith=f'ORD-{year_month}'
@@ -255,14 +359,8 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             
             validated_data['order_number'] = f'ORD-{year_month}-{new_num:05d}'
         
-        # These will be passed from the view's perform_create
-        # Don't override them here - let the view handle it
-        # The view calls: serializer.save(tenant=..., created_by=...)
-        
-        # Create order with generated order_number
         order = Order.objects.create(**validated_data)
         
-        # Create order items
         for item_data in items_data:
             OrderItem.objects.create(order=order, **item_data)
         
@@ -271,12 +369,10 @@ class OrderCreateSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         items_data = validated_data.pop('items', None)
         
-        # Update order fields
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
         
-        # Update items if provided
         if items_data is not None:
             instance.items.all().delete()
             for item_data in items_data:

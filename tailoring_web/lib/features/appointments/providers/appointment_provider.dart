@@ -5,51 +5,54 @@ import '../services/appointment_service.dart';
 class AppointmentProvider extends ChangeNotifier {
   final AppointmentService _service = AppointmentService();
 
-  bool isLoading = false;
   List<Appointment> appointments = [];
+  bool isLoading = false;
 
   Future<void> loadAppointments({
-    String? search,
-    String? status,
     DateTime? fromDate,
     DateTime? toDate,
+    String? status,
+    String? search,
   }) async {
     isLoading = true;
     notifyListeners();
 
-    final params = <String, dynamic>{};
+    try {
+      final Map<String, dynamic> params = {};
 
-    if (search != null && search.isNotEmpty) {
-      params['search'] = search;
-    }
-    if (status != null && status != 'ALL') {
-      params['status'] = status;
-    }
-    if (fromDate != null) {
-      params['date_from'] = fromDate.toIso8601String().split('T')[0];
-    }
-    if (toDate != null) {
-      params['date_to'] = toDate.toIso8601String().split('T')[0];
-    }
+      // Convert DateTime to YYYY-MM-DD for API consumption
+      if (fromDate != null) {
+        params['from_date'] =
+            "${fromDate.year}-${fromDate.month.toString().padLeft(2, '0')}-${fromDate.day.toString().padLeft(2, '0')}";
+      }
+      if (toDate != null) {
+        params['to_date'] =
+            "${toDate.year}-${toDate.month.toString().padLeft(2, '0')}-${toDate.day.toString().padLeft(2, '0')}";
+      }
+      if (status != null && status != 'ALL') {
+        params['status'] = status;
+      }
+      if (search != null && search.isNotEmpty) {
+        params['search'] = search;
+      }
 
-    appointments = await _service.fetchAppointments(params: params);
-
-    isLoading = false;
-    notifyListeners();
+      // Fetch from service with parameters
+      appointments = await _service.fetchAppointments(queryParams: params);
+    } catch (e) {
+      debugPrint("Error fetching appointments: $e");
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
   }
 
-  Future<void> addAppointment(Appointment appointment) async {
-    final created = await _service.createAppointment(appointment);
-    appointments.insert(0, created);
-    notifyListeners();
+  Future<void> addAppointment(Map<String, dynamic> data) async {
+    await _service.createAppointment(data);
+    await loadAppointments();
   }
 
-  Future<void> updateAppointment(int id, Appointment appointment) async {
-    final updated = await _service.updateAppointment(id, appointment);
-    final index = appointments.indexWhere((e) => e.id == id);
-    if (index != -1) {
-      appointments[index] = updated;
-    }
-    notifyListeners();
+  Future<void> updateAppointment(int id, Map<String, dynamic> data) async {
+    await _service.updateAppointment(id, data);
+    await loadAppointments();
   }
 }

@@ -1,13 +1,12 @@
 """
 Financials app serializers - Financial API serializers
-Date: 2026-01-27
-PERMANENT FIX: Dynamic validation + flexible field names
+Date: 2026-01-03
 """
 
 from rest_framework import serializers
 from .models import ReceiptVoucher, Payment, RefundVoucher
 from decimal import Decimal
-from datetime import datetime
+
 
 # ==================== RECEIPT VOUCHER SERIALIZERS ====================
 
@@ -52,37 +51,14 @@ class ReceiptVoucherDetailSerializer(serializers.ModelSerializer):
 
 
 class ReceiptVoucherCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating receipt vouchers - FLEXIBLE FIELD NAMES"""
+    """Serializer for creating receipt vouchers"""
     
-    # ✅ Accept both 'amount' and 'advance_amount' for backward compatibility
-    amount = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, write_only=True)
-    receipt_date = serializers.DateField()
-    #customer = serializers.CharField(source='customer.name', read_only=True)
     class Meta:
         model = ReceiptVoucher
         fields = [
-            'order', 'receipt_date', 'advance_amount', 'amount', 'gst_rate',
+            'customer', 'order', 'receipt_date', 'advance_amount', 'gst_rate',
             'payment_mode', 'transaction_reference', 'notes'
         ]
-    
-    def validate(self, data):
-        """Accept either 'amount' or 'advance_amount'"""
-        if 'amount' in data and 'advance_amount' not in data:
-            data['advance_amount'] = data.pop('amount')
-        elif 'amount' in data:
-            # Both provided, remove 'amount'
-            data.pop('amount')
-        if 'receipt_date' in data and hasattr(data['receipt_date'], 'date'):
-            if isinstance(data['payment_date'], datetime):
-                data['receipt_date'] = data['payment_date'].date()
-        
-        # If order provided, auto-populate customer
-        order_instance = data.get('order')
-        if order_instance and 'customer' not in data:
-            # We can access the customer directly from the order instance
-            data['customer'] = order_instance.customer
-
-        return data
 
 
 # ==================== PAYMENT SERIALIZERS ====================
@@ -121,7 +97,7 @@ class PaymentDetailSerializer(serializers.ModelSerializer):
 
 
 class PaymentCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating payments - DYNAMIC VALIDATION"""
+    """Serializer for creating payments"""
     
     class Meta:
         model = Payment
@@ -131,44 +107,18 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
         ]
     
     def validate_amount(self, value):
-        """✅ FIXED: Validate payment amount using DYNAMIC balance calculation"""
-        invoice_id = self.initial_data.get('invoice')
-        if invoice_id:
+        """Validate payment amount doesn't exceed invoice balance"""
+        invoice = self.initial_data.get('invoice')
+        if invoice:
             from invoicing.models import Invoice
-            from financials.models import ReceiptVoucher, Payment as PaymentModel, RefundVoucher
-            
             try:
-                invoice = Invoice.objects.get(pk=invoice_id)
-                
-                # ✅ Calculate dynamic remaining balance
-                grand_total = invoice.grand_total
-                
-                # Get advances (minus refunds)
-                advances = Decimal('0.00')
-                if invoice.order:
-                    receipts = ReceiptVoucher.objects.filter(order=invoice.order, tenant=invoice.tenant)
-                    for receipt in receipts:
-                        advances += receipt.total_amount
-                    
-                    # Subtract refunds
-                    refunds = RefundVoucher.objects.filter(receipt_voucher__order=invoice.order, tenant=invoice.tenant)
-                    for refund in refunds:
-                        advances -= refund.total_refund
-                
-                # Get invoice payments
-                payments = PaymentModel.objects.filter(invoice=invoice, tenant=invoice.tenant)
-                invoice_payments = sum(p.amount for p in payments)
-                
-                # Calculate dynamic remaining balance
-                remaining = grand_total - advances - invoice_payments
-                
-                if value > remaining:
+                invoice_obj = Invoice.objects.get(pk=invoice)
+                if value > invoice_obj.remaining_balance:
                     raise serializers.ValidationError(
-                        f"Payment amount (₹{value}) exceeds remaining balance (₹{remaining})"
+                        f"Payment amount (₹{value}) exceeds remaining balance (₹{invoice_obj.remaining_balance})"
                     )
             except Invoice.DoesNotExist:
                 pass
-        
         return value
 
 

@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:tailoring_web/core/theme/app_theme.dart';
 import 'package:tailoring_web/core/api/api_client.dart';
-import '../models/receipt_voucher.dart';
+import 'package:intl/intl.dart';
 import '../models/invoice_payment.dart';
+import '../models/receipt_voucher.dart';
 import '../services/payment_service.dart';
 
 class RecordPaymentDialog extends StatefulWidget {
   final Map<String, dynamic> orderData;
-  final int?
-  invoiceId; // If provided, creates InvoicePayment; otherwise ReceiptVoucher
+  final int? invoiceId;
   final VoidCallback onPaymentRecorded;
 
   const RecordPaymentDialog({
@@ -23,512 +24,121 @@ class RecordPaymentDialog extends StatefulWidget {
 }
 
 class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
-  final PaymentService _paymentService = PaymentService();
   final _formKey = GlobalKey<FormState>();
+  final _apiClient = ApiClient();
   final _amountController = TextEditingController();
-  final _referenceController = TextEditingController();
   final _notesController = TextEditingController();
 
-  bool _isRecording = false;
-  String _paymentDate = '';
-  String _paymentMode = 'CASH';
-  double _gstRate = 0.0;
-  bool _applyGst = false;
+  bool _isLoading = false;
+  String _paymentMethod = 'CASH';
+  DateTime _paymentDate = DateTime.now();
+
+  late double _maxAmount;
+  late bool _isInvoicePayment;
 
   @override
   void initState() {
     super.initState();
-    _paymentDate = DateTime.now().toIso8601String().split('T')[0];
+    _calculateMaxAmount();
+  }
 
-    // Default GST rate if you usually have one
-    _gstRate = 5.0;
+  void _calculateMaxAmount() {
+    _isInvoicePayment = widget.invoiceId != null;
+
+    final estimatedTotal = (widget.orderData['estimated_total'] ?? 0)
+        .toDouble();
+    final totalPaid = (widget.orderData['total_paid'] ?? 0).toDouble();
+    _maxAmount = estimatedTotal - totalPaid;
+
+    if (_maxAmount < 0) _maxAmount = 0;
   }
 
   @override
   void dispose() {
     _amountController.dispose();
-    _referenceController.dispose();
     _notesController.dispose();
     super.dispose();
   }
 
-  // Robust helper to get the total amount from various possible keys
-  double _getOrderTotal() {
-    return _getDoubleValue(widget.orderData['estimated_total']) != 0.0
-        ? _getDoubleValue(widget.orderData['estimated_total'])
-        : _getDoubleValue(widget.orderData['grand_total']);
+  void _quickFill() {
+    _amountController.text = _maxAmount.toStringAsFixed(2);
   }
 
-  double _getAdvancePaid() {
-    return _getDoubleValue(widget.orderData['advance_received']) != 0.0
-        ? _getDoubleValue(widget.orderData['advance_received'])
-        : _getDoubleValue(widget.orderData['paid_amount']);
-  }
-
-  double _calculateBalanceDue() {
-    return _getOrderTotal() - _getAdvancePaid();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bool isInvoicePayment = widget.invoiceId != null;
-    final String title = isInvoicePayment
-        ? 'Record Payment'
-        : 'Record Advance Payment';
-    final String buttonText = isInvoicePayment
-        ? 'Record Payment'
-        : 'Record Advance';
-
-    final double balanceDue = _calculateBalanceDue();
-
-    return Dialog(
-      child: Container(
-        width: 500,
-        constraints: const BoxConstraints(maxHeight: 700),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryBlue.withOpacity(0.1),
-                border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    isInvoicePayment ? Icons.payment : Icons.money,
-                    color: AppTheme.primaryBlue,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        Text(
-                          isInvoicePayment
-                              ? 'Payment against Invoice'
-                              : 'Advance payment (before invoice)',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildBalanceSummary(balanceDue),
-                      const SizedBox(height: 20),
-                      TextFormField(
-                        initialValue: _paymentDate,
-                        decoration: const InputDecoration(
-                          labelText: 'Payment Date *',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.calendar_today),
-                        ),
-                        readOnly: true,
-                        onTap: () async {
-                          final date = await showDatePicker(
-                            context: context,
-                            initialDate: DateTime.now(),
-                            firstDate: DateTime(2020),
-                            lastDate: DateTime.now(),
-                          );
-                          if (date != null) {
-                            setState(() {
-                              _paymentDate = date.toIso8601String().split(
-                                'T',
-                              )[0];
-                            });
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _amountController,
-                        decoration: InputDecoration(
-                          labelText: isInvoicePayment
-                              ? 'Payment Amount *'
-                              : 'Advance Amount *',
-                          border: const OutlineInputBorder(),
-                          prefixIcon: const Icon(Icons.currency_rupee),
-                          helperText:
-                              'Balance Due: ₹${balanceDue.toStringAsFixed(2)}',
-                        ),
-                        keyboardType: TextInputType.number,
-                        onChanged: (v) => setState(() {}),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter amount';
-                          }
-                          final amount = double.tryParse(value);
-                          if (amount == null || amount <= 0) {
-                            return 'Please enter valid amount';
-                          }
-                          // Allow a tiny margin for double precision errors
-                          if (amount > (balanceDue + 0.01)) {
-                            return 'Amount cannot exceed balance due';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      DropdownButtonFormField<String>(
-                        value: _paymentMode,
-                        decoration: const InputDecoration(
-                          labelText: 'Payment Mode *',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.payment),
-                        ),
-                        items: const [
-                          DropdownMenuItem(value: 'CASH', child: Text('Cash')),
-                          DropdownMenuItem(value: 'UPI', child: Text('UPI')),
-                          DropdownMenuItem(value: 'CARD', child: Text('Card')),
-                          DropdownMenuItem(
-                            value: 'BANK_TRANSFER',
-                            child: Text('Bank Transfer'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'CHEQUE',
-                            child: Text('Cheque'),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          setState(() => _paymentMode = value!);
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      if (_paymentMode != 'CASH')
-                        TextFormField(
-                          controller: _referenceController,
-                          decoration: InputDecoration(
-                            labelText: _paymentMode == 'UPI'
-                                ? 'UPI Transaction ID'
-                                : _paymentMode == 'CARD'
-                                ? 'Last 4 Digits'
-                                : _paymentMode == 'CHEQUE'
-                                ? 'Cheque Number'
-                                : 'Transaction Reference',
-                            border: const OutlineInputBorder(),
-                            prefixIcon: const Icon(Icons.receipt),
-                          ),
-                        ),
-                      if (_paymentMode != 'CASH') const SizedBox(height: 16),
-                      if (!isInvoicePayment) ...[
-                        SwitchListTile(
-                          title: const Text('Apply GST on Advance'),
-                          subtitle: Text(
-                            _applyGst
-                                ? 'GST will be calculated at ${_gstRate.toStringAsFixed(0)}%'
-                                : 'No GST on this advance',
-                          ),
-                          value: _applyGst,
-                          onChanged: (value) {
-                            setState(() => _applyGst = value);
-                          },
-                        ),
-                        if (_applyGst) ...[
-                          const SizedBox(height: 16),
-                          DropdownButtonFormField<double>(
-                            value: _gstRate,
-                            decoration: const InputDecoration(
-                              labelText: 'GST Rate *',
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.percent),
-                            ),
-                            items: const [
-                              DropdownMenuItem(value: 0.0, child: Text('0%')),
-                              DropdownMenuItem(value: 5.0, child: Text('5%')),
-                              DropdownMenuItem(value: 12.0, child: Text('12%')),
-                              DropdownMenuItem(value: 18.0, child: Text('18%')),
-                              DropdownMenuItem(value: 28.0, child: Text('28%')),
-                            ],
-                            onChanged: (value) {
-                              setState(() => _gstRate = value!);
-                            },
-                          ),
-                        ],
-                      ],
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _notesController,
-                        decoration: const InputDecoration(
-                          labelText: 'Notes (Optional)',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.notes),
-                        ),
-                        maxLines: 2,
-                      ),
-                      if (!isInvoicePayment && _applyGst) ...[
-                        const SizedBox(height: 20),
-                        _buildGstPreview(),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: Colors.grey.shade300)),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: _isRecording
-                        ? null
-                        : () => Navigator.pop(context),
-                    child: const Text('Cancel'),
-                  ),
-                  const SizedBox(width: 12),
-                  ElevatedButton(
-                    onPressed: _isRecording ? null : _recordPayment,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryBlue,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 32,
-                        vertical: 16,
-                      ),
-                    ),
-                    child: _isRecording
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.white,
-                              ),
-                            ),
-                          )
-                        : Text(buttonText),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBalanceSummary(double balanceDue) {
-    final double grandTotal = _getOrderTotal();
-    final double advanceReceived = _getAdvancePaid();
-
-    return Card(
-      elevation: 0,
-      color: AppTheme.primaryBlue.withOpacity(0.05),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: BorderSide(color: AppTheme.primaryBlue.withOpacity(0.2)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            _summaryRow('Order Total', '₹${grandTotal.toStringAsFixed(2)}'),
-            const SizedBox(height: 8),
-            _summaryRow(
-              'Advance Paid',
-              '₹${advanceReceived.toStringAsFixed(2)}',
-              valueColor: AppTheme.success,
-            ),
-            const Divider(height: 20),
-            _summaryRow(
-              'Balance Due',
-              '₹${balanceDue.toStringAsFixed(2)}',
-              isBold: true,
-              valueColor: AppTheme.primaryBlue,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _summaryRow(
-    String label,
-    String value, {
-    bool isBold = false,
-    Color? valueColor,
-  }) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontWeight: isBold ? FontWeight.w600 : FontWeight.normal,
-          ),
-        ),
-        Text(
-          value,
-          style: TextStyle(
-            fontWeight: isBold ? FontWeight.w600 : FontWeight.w500,
-            color: valueColor,
-            fontSize: isBold ? 18 : 14,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildGstPreview() {
-    final amount = double.tryParse(_amountController.text) ?? 0.0;
-    if (amount <= 0) return const SizedBox.shrink();
-
-    final cgst = (amount * _gstRate / 2) / 100;
-    final sgst = (amount * _gstRate / 2) / 100;
-    final total = amount + cgst + sgst;
-
-    return Card(
-      elevation: 0,
-      color: Colors.grey.shade50,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: BorderSide(color: Colors.grey.shade300),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'GST Calculation (Preview)',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            _gstRow('Advance Amount', amount),
-            _gstRow('CGST (${(_gstRate / 2).toStringAsFixed(1)}%)', cgst),
-            _gstRow('SGST (${(_gstRate / 2).toStringAsFixed(1)}%)', sgst),
-            const Divider(height: 16),
-            _gstRow('Total including GST', total, isBold: true),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _gstRow(String label, double value, {bool isBold = false}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: isBold ? FontWeight.w600 : FontWeight.normal,
-            ),
-          ),
-          Text(
-            '₹${value.toStringAsFixed(2)}',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: isBold ? FontWeight.w600 : FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  // Find the _recordPayment() method and update the date formatting:
 
   Future<void> _recordPayment() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isRecording = true);
+    final amount = double.tryParse(_amountController.text) ?? 0;
+
+    if (amount > _maxAmount) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Cannot exceed maximum amount of ₹${_maxAmount.toStringAsFixed(2)}',
+          ),
+          backgroundColor: AppTheme.danger,
+        ),
+      );
+      return;
+    }
+
+    if (amount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Amount must be greater than zero'),
+          backgroundColor: AppTheme.danger,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
 
     try {
-      final double amount = double.parse(_amountController.text);
-      final bool isInvoicePayment = widget.invoiceId != null;
+      // ✅ FIXED: Format date as YYYY-MM-DD string only
+      final dateString =
+          '${_paymentDate.year}-${_paymentDate.month.toString().padLeft(2, '0')}-${_paymentDate.day.toString().padLeft(2, '0')}';
 
-      if (isInvoicePayment) {
-        final invoicePayment = InvoicePayment(
-          paymentNumber: '',
-          paymentDate: _paymentDate,
-          invoice: widget.invoiceId!,
-          amount: amount,
-          paymentMode: _paymentMode,
-          transactionReference: _referenceController.text.isNotEmpty
-              ? _referenceController.text
-              : null,
-          notes: _notesController.text.isNotEmpty
-              ? _notesController.text
-              : null,
+      if (_isInvoicePayment) {
+        await _apiClient.post(
+          'financials/payments/',
+          data: {
+            'invoice': widget.invoiceId,
+            'amount': amount,
+            'payment_mode': _paymentMethod,
+            'payment_date': dateString, // ✅ Date string only
+            'notes': _notesController.text.isEmpty ? '' : _notesController.text,
+          },
         );
-
-        await _paymentService.createInvoicePayment(invoicePayment);
       } else {
-        // Fix for ReceiptVoucher Error: calculate totalAmount
-        final double gstAmount = _applyGst ? (amount * _gstRate / 100) : 0.0;
-        final double totalWithGst = amount + gstAmount;
-
-        final receiptVoucher = ReceiptVoucher(
-          voucherNumber: '',
-          receiptDate: DateTime.parse(_paymentDate),
-          customer: widget.orderData['customer'],
-          order: widget.orderData['id'],
-          advanceAmount: amount,
-          gstRate: _applyGst ? _gstRate : 0.0,
-          totalAmount: totalWithGst, // Pass calculated total here
-          paymentMode: _paymentMode,
-          transactionReference: _referenceController.text.isNotEmpty
-              ? _referenceController.text
-              : null,
-          notes: _notesController.text.isNotEmpty
-              ? _notesController.text
-              : null,
+        await _apiClient.post(
+          'financials/receipts/',
+          data: {
+            'order': widget.orderData['id'],
+            'advance_amount': amount,
+            'payment_mode': _paymentMethod,
+            'receipt_date': dateString, // ✅ Date string only
+            'notes': _notesController.text.isEmpty ? '' : _notesController.text,
+          },
         );
-
-        await _paymentService.createReceiptVoucher(receiptVoucher);
       }
+
+      setState(() => _isLoading = false);
 
       if (mounted) {
         Navigator.pop(context);
+        widget.onPaymentRecorded();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              isInvoicePayment
-                  ? 'Payment recorded successfully'
-                  : 'Advance payment recorded successfully',
-            ),
+          const SnackBar(
+            content: Text('Payment recorded successfully'),
             backgroundColor: AppTheme.success,
           ),
         );
-        widget.onPaymentRecorded();
-      }
-    } on ApiException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message), backgroundColor: AppTheme.danger),
-        );
       }
     } catch (e) {
+      setState(() => _isLoading = false);
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -537,18 +147,289 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
           ),
         );
       }
-    } finally {
-      if (mounted) {
-        setState(() => _isRecording = false);
-      }
     }
   }
 
-  double _getDoubleValue(dynamic value) {
-    if (value == null) return 0.0;
-    if (value is double) return value;
-    if (value is int) return value.toDouble();
-    if (value is String) return double.tryParse(value) ?? 0.0;
-    return 0.0;
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+      ),
+      child: Container(
+        width: 500,
+        padding: const EdgeInsets.all(24),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryBlue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.payment,
+                      color: AppTheme.primaryBlue,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _isInvoicePayment
+                              ? 'Record Invoice Payment'
+                              : 'Record Advance Payment',
+                          style: AppTheme.heading2,
+                        ),
+                        Text(
+                          _isInvoicePayment
+                              ? 'Payment against invoice'
+                              : 'Advance payment before invoice',
+                          style: AppTheme.bodySmall.copyWith(
+                            color: AppTheme.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 20),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+
+              if (_maxAmount <= 0)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.check_circle,
+                        color: Colors.green.shade700,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _isInvoicePayment
+                              ? 'Invoice is fully paid'
+                              : 'Order is fully paid',
+                          style: TextStyle(
+                            color: Colors.green.shade700,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            color: Colors.orange.shade700,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Maximum allowed: ₹${_maxAmount.toStringAsFixed(2)}',
+                              style: TextStyle(
+                                color: Colors.orange.shade700,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 15,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Cannot accept payment beyond ${_isInvoicePayment ? 'invoice' : 'order'} total. Create new order for additional amounts.',
+                        style: TextStyle(
+                          color: Colors.orange.shade700,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _amountController,
+                        enabled: _maxAmount > 0,
+                        decoration: InputDecoration(
+                          labelText: 'Amount *',
+                          prefixText: '₹',
+                          border: const OutlineInputBorder(),
+                          filled: true,
+                          fillColor: _maxAmount > 0
+                              ? AppTheme.backgroundWhite
+                              : AppTheme.backgroundGrey,
+                        ),
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'^\d+\.?\d{0,2}'),
+                          ),
+                        ],
+                        validator: (value) {
+                          if (value?.isEmpty ?? true) return 'Required';
+                          final amount = double.tryParse(value!);
+                          if (amount == null || amount <= 0)
+                            return 'Invalid amount';
+                          if (amount > _maxAmount) return 'Exceeds max amount';
+                          return null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton(
+                      onPressed: _maxAmount > 0 ? _quickFill : null,
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 20,
+                        ),
+                      ),
+                      child: const Text('Fill Max'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                DropdownButtonFormField<String>(
+                  value: _paymentMethod,
+                  decoration: const InputDecoration(
+                    labelText: 'Payment Method *',
+                    border: OutlineInputBorder(),
+                    filled: true,
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'CASH', child: Text('Cash')),
+                    DropdownMenuItem(value: 'CARD', child: Text('Card')),
+                    DropdownMenuItem(value: 'UPI', child: Text('UPI')),
+                    DropdownMenuItem(
+                      value: 'BANK_TRANSFER',
+                      child: Text('Bank Transfer'),
+                    ),
+                    DropdownMenuItem(value: 'CHEQUE', child: Text('Cheque')),
+                  ],
+                  onChanged: _maxAmount > 0
+                      ? (value) {
+                          if (value != null) {
+                            setState(() => _paymentMethod = value);
+                          }
+                        }
+                      : null,
+                ),
+                const SizedBox(height: 16),
+
+                InkWell(
+                  onTap: _maxAmount > 0
+                      ? () async {
+                          final date = await showDatePicker(
+                            context: context,
+                            initialDate: _paymentDate,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime.now(),
+                          );
+                          if (date != null) {
+                            setState(() => _paymentDate = date);
+                          }
+                        }
+                      : null,
+                  child: InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: 'Payment Date',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: const Icon(Icons.calendar_today),
+                      filled: true,
+                      fillColor: _maxAmount > 0
+                          ? AppTheme.backgroundWhite
+                          : AppTheme.backgroundGrey,
+                    ),
+                    child: Text(DateFormat('dd-MM-yyyy').format(_paymentDate)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                TextFormField(
+                  controller: _notesController,
+                  enabled: _maxAmount > 0,
+                  decoration: InputDecoration(
+                    labelText: 'Notes (Optional)',
+                    border: const OutlineInputBorder(),
+                    filled: true,
+                    fillColor: _maxAmount > 0
+                        ? AppTheme.backgroundWhite
+                        : AppTheme.backgroundGrey,
+                  ),
+                  maxLines: 3,
+                ),
+              ],
+              const SizedBox(height: 24),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton(
+                    onPressed: _isLoading ? null : () => Navigator.pop(context),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton.icon(
+                    onPressed: (_isLoading || _maxAmount <= 0)
+                        ? null
+                        : _recordPayment,
+                    icon: _isLoading
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.check),
+                    label: Text(_isLoading ? 'Recording...' : 'Record Payment'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

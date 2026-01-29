@@ -5,8 +5,10 @@ import '../../../core/layouts/main_layout.dart';
 import 'order_detail_tabs/overview_tab.dart';
 import 'order_detail_tabs/items_and_payments_tab.dart';
 import 'order_detail_tabs/measurements_tab.dart';
-import '../widgets/dialogs/cancel_order_dialog.dart';
-import '../services/print_service.dart';
+import '../widgets/print_internal_dialog.dart';
+import '../widgets/print_workshop_dialog.dart';
+
+import '../../invoices/widgets/dialogs/create_invoice_dialog.dart';
 
 class OrderDetailScreen extends StatefulWidget {
   final int orderId;
@@ -112,7 +114,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
     final orderNumber = _orderData!['order_number'] ?? 'N/A';
     final isLocked = _orderData!['is_locked'] ?? false;
     final isVoid = _orderData!['is_void'] ?? false;
-    final isCancelled = (_orderData!['order_status'] ?? '') == 'CANCELLED';
 
     return Column(
       children: [
@@ -186,7 +187,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
                       const Icon(Icons.block, size: 16, color: AppTheme.danger),
                       const SizedBox(width: 6),
                       Text(
-                        'VOID',
+                        'CANCELLED',
                         style: AppTheme.bodySmall.copyWith(
                           fontWeight: FontWeight.w600,
                           color: AppTheme.danger,
@@ -200,73 +201,64 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
           ),
         ),
 
-        // Action Buttons Row
+        // Action Buttons Row - Back left, Actions right
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           decoration: const BoxDecoration(
             color: Colors.white,
             border: Border(bottom: BorderSide(color: AppTheme.borderLight)),
           ),
-          child: Wrap(
-            spacing: 12,
-            runSpacing: 12,
+          child: Row(
             children: [
-              _buildActionButton(
-                icon: Icons.print,
-                label: 'Print (Customer)',
-                onPressed: _onPrintCustomerCopy,
+              // Left: Back button
+              OutlinedButton.icon(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.arrow_back, size: 18),
+                label: const Text('Back to Orders'),
               ),
-              _buildActionButton(
-                icon: Icons.precision_manufacturing,
-                label: 'Print (Workshop)',
-                onPressed: _onPrintWorkshopCopy,
+              const Spacer(),
+              // Right: Action buttons
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  _buildActionButton(
+                    icon: Icons.print,
+                    label: 'Print - Internal',
+                    onPressed: _onPrintCustomerCopy,
+                  ),
+                  _buildActionButton(
+                    icon: Icons.precision_manufacturing,
+                    label: 'Print - Workshop',
+                    onPressed: _onPrintWorkshopCopy,
+                  ),
+                  // ✅ FIXED: Show "Create Invoice" or "View Invoice"
+                  _buildActionButton(
+                    icon: _orderData!['invoice_id'] != null
+                        ? Icons.visibility
+                        : Icons.receipt_long,
+                    label: _orderData!['invoice_id'] != null
+                        ? 'View Invoice'
+                        : 'Create Invoice',
+                    onPressed: _orderData!['invoice_id'] != null
+                        ? _onViewInvoice
+                        : _onCreateInvoice,
+                    isPrimary: true,
+                  ),
+                  if (!isVoid)
+                    _buildActionButton(
+                      icon: Icons.block,
+                      label: 'Cancel Order',
+                      onPressed: _onCancelOrder,
+                      isDanger: true,
+                    ),
+                ],
               ),
-              if (!isVoid && !isCancelled)
-                _buildActionButton(
-                  icon: Icons.receipt_long,
-                  label: 'Create Invoice',
-                  onPressed: _onCreateInvoice,
-                  isPrimary: true,
-                ),
-              if (!isVoid && !isCancelled)
-                _buildActionButton(
-                  icon: Icons.cancel_outlined,
-                  label: 'Cancel Order',
-                  onPressed: _onCancelOrder,
-                  isDanger: true,
-                ),
-              if (!isVoid && !isCancelled)
-                _buildActionButton(
-                  icon: Icons.block,
-                  label: 'Void Order',
-                  onPressed: _onVoidOrder,
-                  isDanger: true,
-                ),
             ],
           ),
         ),
 
-        // Cancelled Banner
-        if (isCancelled)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            color: AppTheme.danger.withOpacity(0.1),
-            child: Row(
-              children: [
-                const Icon(Icons.cancel, size: 20, color: AppTheme.danger),
-                const SizedBox(width: 12),
-                Text(
-                  'This order has been cancelled',
-                  style: AppTheme.bodyMedium.copyWith(
-                    color: AppTheme.danger,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-        // Void Banner
+        // Cancel Banner
         if (isVoid)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -280,24 +272,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'This order has been voided',
-                        style: AppTheme.bodyMedium.copyWith(
-                          color: AppTheme.danger,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      if (_orderData!['void_reason'] != null)
-                        Text(
-                          'Reason: ${_orderData!['void_reason']}',
-                          style: AppTheme.bodySmall.copyWith(
-                            color: AppTheme.danger,
-                          ),
-                        ),
-                    ],
+                  child: Text(
+                    'This order has been cancelled and cannot be modified.',
+                    style: AppTheme.bodyMedium.copyWith(
+                      color: AppTheme.danger,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
               ],
@@ -305,7 +285,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
           ),
 
         // Lock Banner
-        if (isLocked && !isVoid && !isCancelled)
+        if (isLocked && !isVoid)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             color: AppTheme.warning.withOpacity(0.1),
@@ -319,9 +299,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'This order is locked. Some actions are disabled.',
+                    'This order is locked because an invoice has been created.',
                     style: AppTheme.bodyMedium.copyWith(
                       color: AppTheme.warning,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ),
@@ -337,10 +318,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
             labelColor: AppTheme.primaryBlue,
             unselectedLabelColor: AppTheme.textSecondary,
             indicatorColor: AppTheme.primaryBlue,
-            indicatorWeight: 3,
-            labelStyle: AppTheme.bodyMedium.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
             tabs: const [
               Tab(text: 'Overview'),
               Tab(text: 'Items & Payments'),
@@ -356,13 +333,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
             children: [
               OverviewTab(
                 orderData: _orderData!,
-                isLocked: isLocked || isVoid || isCancelled,
+                isLocked: isLocked,
                 onRefresh: _loadOrderDetails,
               ),
               ItemsAndPaymentsTab(
                 orderData: _orderData!,
-                isLocked: isLocked || isVoid || isCancelled,
-                onRefresh: _loadOrderDetails,
+                onUpdate: _loadOrderDetails,
               ),
               MeasurementsTab(orderData: _orderData!),
             ],
@@ -381,7 +357,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
   }) {
     return ElevatedButton.icon(
       onPressed: onPressed,
-      icon: Icon(icon, size: 16),
+      icon: Icon(icon, size: 18),
       label: Text(label),
       style: ElevatedButton.styleFrom(
         backgroundColor: isDanger
@@ -389,110 +365,147 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
             : isPrimary
             ? AppTheme.primaryBlue
             : Colors.white,
-        foregroundColor: isDanger
-            ? Colors.white
-            : isPrimary
+        foregroundColor: isDanger || isPrimary
             ? Colors.white
             : AppTheme.textPrimary,
-        elevation: isPrimary || isDanger ? 2 : 0,
-        side: !isPrimary && !isDanger
-            ? const BorderSide(color: AppTheme.borderLight)
-            : null,
+        elevation: isDanger || isPrimary ? 2 : 0,
+        side: isDanger || isPrimary
+            ? null
+            : const BorderSide(color: AppTheme.borderLight),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),
     );
   }
 
   void _onPrintCustomerCopy() {
-    if (_orderData != null) {
-      PrintService.printCustomerCopy(_orderData!);
-    }
+    showDialog(
+      context: context,
+      builder: (context) => PrintInternalDialog(orderData: _orderData!),
+    );
   }
 
   void _onPrintWorkshopCopy() {
-    if (_orderData != null) {
-      PrintService.printWorkshopCopy(_orderData!);
+    showDialog(
+      context: context,
+      builder: (context) => PrintWorkshopDialog(orderData: _orderData!),
+    );
+  }
+
+  void _onCreateInvoice() async {
+    final orderStatus = _orderData!['order_status'];
+
+    // Allow invoice creation for CONFIRMED, IN_PROGRESS, READY, COMPLETED
+    if (orderStatus != 'CONFIRMED' &&
+        orderStatus != 'IN_PROGRESS' &&
+        orderStatus != 'READY' &&
+        orderStatus != 'COMPLETED') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Order must be confirmed or in progress to create invoice. Current status: ${_orderData!['order_status_display']}',
+          ),
+          backgroundColor: AppTheme.warning,
+        ),
+      );
+      return;
+    }
+
+    // Check if invoice already exists
+    if (_orderData!['invoice_id'] != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Invoice already exists for this order'),
+          backgroundColor: AppTheme.info,
+        ),
+      );
+      return;
+    }
+
+    // Show create invoice dialog
+    final invoiceId = await showDialog<int>(
+      context: context,
+      builder: (context) => CreateInvoiceDialog(
+        orderId: widget.orderId,
+        customerId: _orderData!['customer'],
+      ),
+    );
+
+    if (invoiceId != null && mounted) {
+      // Reload order to show locked state
+      await _loadOrderDetails();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Invoice created successfully!'),
+          backgroundColor: AppTheme.success,
+          action: SnackBarAction(
+            label: 'View Invoice',
+            textColor: Colors.white,
+            onPressed: () {
+              Navigator.pushNamed(context, '/invoices/$invoiceId');
+            },
+          ),
+        ),
+      );
     }
   }
 
-  void _onCreateInvoice() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Create Invoice - To be implemented')),
-    );
+  void _onViewInvoice() {
+    final invoiceId = _orderData!['invoice_id'];
+    if (invoiceId != null) {
+      Navigator.pushNamed(context, '/invoices/$invoiceId');
+    }
   }
 
-  void _onCancelOrder() {
-    showDialog(
-      context: context,
-      builder: (context) => CancelOrderDialog(
-        orderData: _orderData!,
-        onOrderCancelled: _loadOrderDetails,
-      ),
-    );
-  }
-
-  void _onVoidOrder() {
-    final TextEditingController reasonController = TextEditingController();
-
-    showDialog(
+  void _onCancelOrder() async {
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Void Order'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Are you sure you want to void this order?',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'This action will mark the order as void but keep it in the system for record-keeping.',
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: reasonController,
-              decoration: const InputDecoration(
-                labelText: 'Reason for voiding (required)',
-                border: OutlineInputBorder(),
-                hintText: 'e.g., Customer cancelled, Incorrect order',
-              ),
-              maxLines: 3,
-            ),
-          ],
+        title: const Text('Cancel Order?'),
+        content: const Text(
+          'Are you sure you want to cancel this order? This action cannot be undone.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No, Keep Order'),
           ),
           ElevatedButton(
-            onPressed: () async {
-              if (reasonController.text.trim().isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Please provide a reason for voiding'),
-                    backgroundColor: AppTheme.warning,
-                  ),
-                );
-                return;
-              }
-
-              Navigator.pop(context);
-              // TODO: Implement void order API call
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Void Order API - To be implemented'),
-                  backgroundColor: AppTheme.warning,
-                ),
-              );
-            },
+            onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.danger),
-            child: const Text('Void Order'),
+            child: const Text('Yes, Cancel Order'),
           ),
         ],
       ),
     );
+
+    if (confirmed != true) return;
+
+    try {
+      await _apiClient.patch(
+        'orders/orders/${widget.orderId}/',
+        data: {'is_void': true},
+      );
+
+      await _loadOrderDetails();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Order cancelled successfully'),
+            backgroundColor: AppTheme.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to cancel order: $e'),
+            backgroundColor: AppTheme.danger,
+          ),
+        );
+      }
+    }
   }
 }

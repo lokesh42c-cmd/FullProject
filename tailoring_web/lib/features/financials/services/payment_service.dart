@@ -30,11 +30,20 @@ class PaymentService {
         queryParameters: {'order': orderId},
       );
 
+      // Handle paginated response {count, results}
+      if (response.data is Map && response.data['results'] != null) {
+        return (response.data['results'] as List)
+            .map((json) => ReceiptVoucher.fromJson(json))
+            .toList();
+      }
+
+      // Handle direct list response
       if (response.data is List) {
         return (response.data as List)
             .map((json) => ReceiptVoucher.fromJson(json))
             .toList();
       }
+
       return [];
     } catch (e) {
       print('Error fetching receipt vouchers: $e');
@@ -106,6 +115,13 @@ class PaymentService {
         queryParameters: {'invoice': invoiceId},
       );
 
+      // Handle paginated response
+      if (response.data is Map && response.data['results'] != null) {
+        return (response.data['results'] as List)
+            .map((json) => InvoicePayment.fromJson(json))
+            .toList();
+      }
+
       if (response.data is List) {
         return (response.data as List)
             .map((json) => InvoicePayment.fromJson(json))
@@ -125,6 +141,13 @@ class PaymentService {
         'financials/payments/',
         queryParameters: {'invoice__order': orderId},
       );
+
+      // Handle paginated response
+      if (response.data is Map && response.data['results'] != null) {
+        return (response.data['results'] as List)
+            .map((json) => InvoicePayment.fromJson(json))
+            .toList();
+      }
 
       if (response.data is List) {
         return (response.data as List)
@@ -185,6 +208,13 @@ class PaymentService {
         queryParameters: {'receipt_voucher': receiptVoucherId},
       );
 
+      // Handle paginated response
+      if (response.data is Map && response.data['results'] != null) {
+        return (response.data['results'] as List)
+            .map((json) => RefundVoucher.fromJson(json))
+            .toList();
+      }
+
       if (response.data is List) {
         return (response.data as List)
             .map((json) => RefundVoucher.fromJson(json))
@@ -206,6 +236,13 @@ class PaymentService {
         'financials/refunds/',
         queryParameters: {'customer': customerId},
       );
+
+      // Handle paginated response
+      if (response.data is Map && response.data['results'] != null) {
+        return (response.data['results'] as List)
+            .map((json) => RefundVoucher.fromJson(json))
+            .toList();
+      }
 
       if (response.data is List) {
         return (response.data as List)

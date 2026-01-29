@@ -26,19 +26,22 @@ class _EditOrderDetailsDialogState extends State<EditOrderDetailsDialog> {
   late DateTime _expectedDeliveryDate;
   DateTime? _actualDeliveryDate;
   late String _priority;
+  late String _orderStatus;
+  late String _deliveryStatus;
+  int? _assignedTo;
 
+  List<Map<String, dynamic>> _employees = [];
+  bool _isLoadingEmployees = true;
   bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
 
-    // Initialize controller
     _paymentTermsController = TextEditingController(
       text: widget.orderData['payment_terms'] ?? '',
     );
 
-    // Initialize dates
     _orderDate = DateTime.parse(widget.orderData['order_date']);
     _expectedDeliveryDate = DateTime.parse(
       widget.orderData['expected_delivery_date'],
@@ -50,6 +53,11 @@ class _EditOrderDetailsDialogState extends State<EditOrderDetailsDialog> {
     }
 
     _priority = widget.orderData['priority'] ?? 'MEDIUM';
+    _orderStatus = widget.orderData['order_status'] ?? 'DRAFT';
+    _deliveryStatus = widget.orderData['delivery_status'] ?? 'NOT_STARTED';
+    _assignedTo = widget.orderData['assigned_to'];
+
+    _loadEmployees();
   }
 
   @override
@@ -58,90 +66,73 @@ class _EditOrderDetailsDialogState extends State<EditOrderDetailsDialog> {
     super.dispose();
   }
 
-  Future<void> _selectDate(BuildContext context, String field) async {
-    DateTime initialDate;
-    DateTime firstDate;
-    DateTime lastDate;
-
-    switch (field) {
-      case 'order':
-        initialDate = _orderDate;
-        firstDate = DateTime.now().subtract(const Duration(days: 365));
-        lastDate = DateTime.now().add(const Duration(days: 30));
-        break;
-      case 'expected':
-        initialDate = _expectedDeliveryDate;
-        firstDate = _orderDate;
-        lastDate = DateTime.now().add(const Duration(days: 365));
-        break;
-      case 'actual':
-        initialDate = _actualDeliveryDate ?? DateTime.now();
-        firstDate = _orderDate;
-        lastDate = DateTime.now().add(const Duration(days: 30));
-        break;
-      default:
-        return;
+  Future<void> _loadEmployees() async {
+    try {
+      final response = await _apiClient.get('employees/employees/');
+      setState(() {
+        if (response.data is Map && response.data['results'] != null) {
+          _employees = List<Map<String, dynamic>>.from(
+            response.data['results'],
+          );
+        } else if (response.data is List) {
+          _employees = List<Map<String, dynamic>>.from(response.data);
+        }
+        _isLoadingEmployees = false;
+      });
+    } catch (e) {
+      print('Error loading employees: $e');
+      setState(() => _isLoadingEmployees = false);
     }
+  }
 
-    final DateTime? picked = await showDatePicker(
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? pickedDate = await showDatePicker(
       context: context,
-      initialDate: initialDate,
-      firstDate: firstDate,
-      lastDate: lastDate,
+      initialDate: _actualDeliveryDate ?? DateTime.now(),
+      firstDate: _orderDate,
+      lastDate: DateTime.now().add(const Duration(days: 365)),
     );
 
-    if (picked != null) {
+    if (pickedDate != null) {
       setState(() {
-        switch (field) {
-          case 'order':
-            _orderDate = picked;
-            break;
-          case 'expected':
-            _expectedDeliveryDate = picked;
-            break;
-          case 'actual':
-            _actualDeliveryDate = picked;
-            break;
-        }
+        _actualDeliveryDate = pickedDate;
       });
     }
   }
 
-  Future<void> _save() async {
+  Future<void> _saveChanges() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isSaving = true);
 
     try {
-      await _apiClient.patch(
-        'orders/orders/${widget.orderData['id']}/',
-        data: {
-          'order_date': _orderDate.toIso8601String().split('T')[0],
-          'expected_delivery_date': _expectedDeliveryDate
-              .toIso8601String()
-              .split('T')[0],
-          'actual_delivery_date': _actualDeliveryDate?.toIso8601String().split(
+      final updateData = {
+        'order_status': _orderStatus,
+        'delivery_status': _deliveryStatus,
+        'priority': _priority,
+        if (_actualDeliveryDate != null)
+          'actual_delivery_date': _actualDeliveryDate!.toIso8601String().split(
             'T',
           )[0],
-          'priority': _priority,
-          'payment_terms': _paymentTermsController.text.trim(),
-        },
+        if (_assignedTo != null) 'assigned_to': _assignedTo,
+        if (_paymentTermsController.text.isNotEmpty)
+          'payment_terms': _paymentTermsController.text,
+      };
+
+      await _apiClient.patch(
+        'orders/orders/${widget.orderData['id']}/',
+        data: updateData,
       );
+
+      widget.onSaved();
 
       if (mounted) {
         Navigator.pop(context);
-        widget.onSaved();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Order details updated successfully'),
             backgroundColor: AppTheme.success,
           ),
-        );
-      }
-    } on ApiException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message), backgroundColor: AppTheme.danger),
         );
       }
     } catch (e) {
@@ -163,195 +154,369 @@ class _EditOrderDetailsDialogState extends State<EditOrderDetailsDialog> {
   @override
   Widget build(BuildContext context) {
     return Dialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+      ),
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 600),
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header
-                  Row(
+        width: 600,
+        constraints: const BoxConstraints(maxHeight: 700),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildHeader(),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(
-                        Icons.edit,
-                        color: AppTheme.primaryBlue,
-                        size: 24,
+                      // Dates Section (Read-only)
+                      Text('Order Dates', style: AppTheme.heading3),
+                      const SizedBox(height: 16),
+
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildReadOnlyField(
+                              'Order Date',
+                              _formatDate(_orderDate),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _buildReadOnlyField(
+                              'Expected Delivery',
+                              _formatDate(_expectedDeliveryDate),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 12),
-                      Text('Edit Order Details', style: AppTheme.heading2),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.pop(context),
+
+                      const SizedBox(height: 16),
+
+                      // Actual Delivery (Editable)
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Actual Delivery Date',
+                            style: AppTheme.bodySmall.copyWith(
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          InkWell(
+                            onTap: () => _selectDate(context),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: AppTheme.borderLight),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    _actualDeliveryDate != null
+                                        ? _formatDate(_actualDeliveryDate!)
+                                        : 'Not Set',
+                                    style: AppTheme.bodyMedium.copyWith(
+                                      color: _actualDeliveryDate != null
+                                          ? AppTheme.textPrimary
+                                          : AppTheme.textSecondary,
+                                    ),
+                                  ),
+                                  const Icon(
+                                    Icons.calendar_today,
+                                    size: 18,
+                                    color: AppTheme.textSecondary,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
 
-                  // Dates Section
-                  Text('Dates', style: AppTheme.heading3),
-                  const SizedBox(height: 16),
+                      const SizedBox(height: 24),
 
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildDateField(
-                          'Order Date',
-                          _orderDate,
-                          () => _selectDate(context, 'order'),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildDateField(
-                          'Expected Delivery',
-                          _expectedDeliveryDate,
-                          () => _selectDate(context, 'expected'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
+                      // Order Status
+                      Text('Order Status', style: AppTheme.heading3),
+                      const SizedBox(height: 16),
 
-                  _buildDateField(
-                    'Actual Delivery (Optional)',
-                    _actualDeliveryDate,
-                    () => _selectDate(context, 'actual'),
-                    optional: true,
-                  ),
-
-                  const SizedBox(height: 24),
-                  const Divider(),
-                  const SizedBox(height: 24),
-
-                  // Priority Section
-                  Text('Priority', style: AppTheme.heading3),
-                  const SizedBox(height: 16),
-
-                  DropdownButtonFormField<String>(
-                    value: _priority,
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 'LOW', child: Text('Low')),
-                      DropdownMenuItem(value: 'MEDIUM', child: Text('Medium')),
-                      DropdownMenuItem(value: 'HIGH', child: Text('High')),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() => _priority = value);
-                      }
-                    },
-                  ),
-
-                  const SizedBox(height: 24),
-                  const Divider(),
-                  const SizedBox(height: 24),
-
-                  // Text Fields Section
-                  Text('Additional Information', style: AppTheme.heading3),
-                  const SizedBox(height: 16),
-
-                  TextFormField(
-                    controller: _paymentTermsController,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: 'Payment Terms',
-                      hintText: 'e.g., 50% advance, balance on delivery',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-
-                  const SizedBox(height: 32),
-
-                  // Action Buttons
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: _isSaving
-                            ? null
-                            : () => Navigator.pop(context),
-                        child: const Text('Cancel'),
-                      ),
-                      const SizedBox(width: 12),
-                      ElevatedButton(
-                        onPressed: _isSaving ? null : _save,
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 32,
-                            vertical: 14,
+                      DropdownButtonFormField<String>(
+                        value: _orderStatus,
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
                           ),
                         ),
-                        child: _isSaving
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.white,
-                                  ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'DRAFT',
+                            child: Text('Draft'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'CONFIRMED',
+                            child: Text('Confirmed'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'IN_PROGRESS',
+                            child: Text('In Progress'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'READY',
+                            child: Text('Ready'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'COMPLETED',
+                            child: Text('Completed'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'CANCELLED',
+                            child: Text('Cancelled'),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() => _orderStatus = value);
+                          }
+                        },
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Priority
+                      Text('Priority', style: AppTheme.heading3),
+                      const SizedBox(height: 16),
+
+                      DropdownButtonFormField<String>(
+                        value: _priority,
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: 'LOW', child: Text('Low')),
+                          DropdownMenuItem(
+                            value: 'MEDIUM',
+                            child: Text('Medium'),
+                          ),
+                          DropdownMenuItem(value: 'HIGH', child: Text('High')),
+                        ],
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() => _priority = value);
+                          }
+                        },
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Delivery Status
+                      Text('Delivery Status', style: AppTheme.heading3),
+                      const SizedBox(height: 16),
+
+                      DropdownButtonFormField<String>(
+                        value: _deliveryStatus,
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'NOT_STARTED',
+                            child: Text('Not Started'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'IN_TRANSIT',
+                            child: Text('In Transit'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'DELIVERED',
+                            child: Text('Delivered'),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() => _deliveryStatus = value);
+                          }
+                        },
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Assigned To
+                      Text('Assigned To', style: AppTheme.heading3),
+                      const SizedBox(height: 16),
+
+                      _isLoadingEmployees
+                          ? const Center(child: CircularProgressIndicator())
+                          : DropdownButtonFormField<int>(
+                              value: _assignedTo,
+                              decoration: const InputDecoration(
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 12,
                                 ),
-                              )
-                            : const Text('Save Changes'),
+                                hintText: 'Select Employee',
+                              ),
+                              items: [
+                                const DropdownMenuItem<int>(
+                                  value: null,
+                                  child: Text('Not Assigned'),
+                                ),
+                                ..._employees.map((emp) {
+                                  return DropdownMenuItem<int>(
+                                    value: emp['id'],
+                                    child: Text(
+                                      emp['name'] ?? 'Employee ${emp['id']}',
+                                    ),
+                                  );
+                                }),
+                              ],
+                              onChanged: (value) {
+                                setState(() => _assignedTo = value);
+                              },
+                            ),
+
+                      const SizedBox(height: 24),
+                      const Divider(),
+                      const SizedBox(height: 24),
+
+                      // Payment Terms
+                      Text('Additional Information', style: AppTheme.heading3),
+                      const SizedBox(height: 16),
+
+                      TextFormField(
+                        controller: _paymentTermsController,
+                        maxLines: 3,
+                        decoration: const InputDecoration(
+                          labelText: 'Payment Terms',
+                          hintText: 'e.g., 50% advance, balance on delivery',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+
+                      const SizedBox(height: 32),
+
+                      // Action Buttons
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: _isSaving
+                                ? null
+                                : () => Navigator.pop(context),
+                            child: const Text('Cancel'),
+                          ),
+                          const SizedBox(width: 12),
+                          ElevatedButton(
+                            onPressed: _isSaving ? null : _saveChanges,
+                            style: ElevatedButton.styleFrom(
+                              minimumSize: const Size(120, 40),
+                            ),
+                            child: _isSaving
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  )
+                                : const Text('Save Changes'),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
+                ),
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildDateField(
-    String label,
-    DateTime? date,
-    VoidCallback onTap, {
-    bool optional = false,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      child: InputDecorator(
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
-          suffixIcon: Row(
-            mainAxisSize: MainAxisSize.min,
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: const BoxDecoration(
+        color: AppTheme.backgroundWhite,
+        border: Border(bottom: BorderSide(color: AppTheme.borderLight)),
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(AppTheme.radiusMedium),
+          topRight: Radius.circular(AppTheme.radiusMedium),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.edit, color: AppTheme.primaryBlue),
+          const SizedBox(width: 12),
+          const Text('Edit Order Details', style: AppTheme.heading2),
+          const Spacer(),
+          IconButton(
+            icon: const Icon(Icons.close, size: 20),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReadOnlyField(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: AppTheme.bodySmall.copyWith(
+            fontWeight: FontWeight.w500,
+            color: AppTheme.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade100,
+            border: Border.all(color: AppTheme.borderLight),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Row(
             children: [
-              if (optional && date != null)
-                IconButton(
-                  icon: const Icon(Icons.clear, size: 18),
-                  onPressed: () {
-                    setState(() {
-                      _actualDeliveryDate = null;
-                    });
-                  },
-                  tooltip: 'Clear date',
+              Expanded(
+                child: Text(
+                  value,
+                  style: AppTheme.bodyMedium.copyWith(
+                    color: AppTheme.textSecondary,
+                  ),
                 ),
-              const Icon(Icons.calendar_today, size: 18),
-              const SizedBox(width: 12),
+              ),
+              Icon(Icons.lock, size: 16, color: Colors.grey.shade400),
             ],
           ),
         ),
-        child: Text(
-          date != null ? _formatDate(date) : 'Not Set',
-          style: AppTheme.bodyMedium,
-        ),
-      ),
+      ],
     );
   }
 

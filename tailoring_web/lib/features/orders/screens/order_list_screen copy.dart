@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/layouts/main_layout.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../core/api/api_client.dart';
 import '../providers/order_provider.dart';
 import '../models/order.dart';
 import '../widgets/order_status_badge.dart';
 import 'create_order_screen.dart';
 import 'order_detail_screen.dart';
 
+/// Order List Screen
+/// Shows all orders with filters and search
 class OrderListScreen extends StatefulWidget {
   final int? customerId;
   final String? customerName;
@@ -21,8 +22,6 @@ class OrderListScreen extends StatefulWidget {
 
 class _OrderListScreenState extends State<OrderListScreen> {
   final _searchController = TextEditingController();
-  final _apiClient = ApiClient();
-  final Map<int, String?> _invoiceCache = {};
 
   @override
   void initState() {
@@ -42,38 +41,6 @@ class _OrderListScreenState extends State<OrderListScreen> {
     super.dispose();
   }
 
-  Future<String?> _getInvoiceNumber(int orderId) async {
-    if (_invoiceCache.containsKey(orderId)) {
-      return _invoiceCache[orderId];
-    }
-
-    try {
-      final response = await _apiClient.get(
-        'invoicing/invoices/',
-        queryParameters: {'order': orderId},
-      );
-
-      if (response.data is Map && response.data['results'] != null) {
-        final invoices = response.data['results'] as List;
-        if (invoices.isNotEmpty) {
-          final invoiceNumber = invoices[0]['invoice_number'];
-          _invoiceCache[orderId] = invoiceNumber;
-          return invoiceNumber;
-        }
-      } else if (response.data is List && response.data.isNotEmpty) {
-        final invoiceNumber = response.data[0]['invoice_number'];
-        _invoiceCache[orderId] = invoiceNumber;
-        return invoiceNumber;
-      }
-
-      _invoiceCache[orderId] = null;
-      return null;
-    } catch (e) {
-      _invoiceCache[orderId] = null;
-      return null;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<OrderProvider>();
@@ -82,7 +49,10 @@ class _OrderListScreenState extends State<OrderListScreen> {
       currentRoute: '/orders',
       child: Column(
         children: [
+          // Customer filter banner
           if (widget.customerId != null) _buildCustomerFilterBanner(),
+
+          // Header
           Container(
             padding: const EdgeInsets.all(AppTheme.space5),
             decoration: const BoxDecoration(
@@ -101,6 +71,8 @@ class _OrderListScreenState extends State<OrderListScreen> {
               ],
             ),
           ),
+
+          // Filters
           Container(
             padding: const EdgeInsets.all(AppTheme.space4),
             decoration: const BoxDecoration(
@@ -109,6 +81,7 @@ class _OrderListScreenState extends State<OrderListScreen> {
             ),
             child: Row(
               children: [
+                // Search
                 Expanded(
                   flex: 2,
                   child: SizedBox(
@@ -125,6 +98,8 @@ class _OrderListScreenState extends State<OrderListScreen> {
                   ),
                 ),
                 const SizedBox(width: AppTheme.space3),
+
+                // Order Status filter
                 Container(
                   height: AppTheme.inputHeight,
                   padding: const EdgeInsets.symmetric(
@@ -175,6 +150,8 @@ class _OrderListScreenState extends State<OrderListScreen> {
               ],
             ),
           ),
+
+          // Orders table
           Expanded(
             child: provider.isLoading
                 ? const Center(child: CircularProgressIndicator())
@@ -279,83 +256,60 @@ class _OrderListScreenState extends State<OrderListScreen> {
 
   Widget _buildOrdersTable(OrderProvider provider) {
     return SingleChildScrollView(
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Container(
-          margin: const EdgeInsets.all(AppTheme.space5),
-          decoration: BoxDecoration(
-            color: AppTheme.backgroundWhite,
-            border: Border.all(color: AppTheme.borderLight),
-            borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
-          ),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: 1400),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
+      child: Container(
+        margin: const EdgeInsets.all(AppTheme.space5),
+        decoration: BoxDecoration(
+          color: AppTheme.backgroundWhite,
+          border: Border.all(color: AppTheme.borderLight),
+          borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
+        ),
+        child: Column(
+          children: [
+            // Table header
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              color: AppTheme.backgroundGrey,
+              child: Row(
+                children: const [
+                  Expanded(
+                    flex: 2,
+                    child: Text('ORDER #', style: AppTheme.tableHeader),
                   ),
-                  color: AppTheme.backgroundGrey,
-                  child: Row(
-                    children: const [
-                      SizedBox(
-                        width: 180,
-                        child: Text('ORDER #', style: AppTheme.tableHeader),
-                      ),
-                      SizedBox(
-                        width: 200,
-                        child: Text('CUSTOMER', style: AppTheme.tableHeader),
-                      ),
-                      SizedBox(
-                        width: 120,
-                        child: Text('ORDER DATE', style: AppTheme.tableHeader),
-                      ),
-                      SizedBox(
-                        width: 120,
-                        child: Text('DELIVERY', style: AppTheme.tableHeader),
-                      ),
-                      SizedBox(
-                        width: 120,
-                        child: Text('TOTAL', style: AppTheme.tableHeader),
-                      ),
-                      SizedBox(
-                        width: 120,
-                        child: Text('PAID', style: AppTheme.tableHeader),
-                      ),
-                      SizedBox(
-                        width: 120,
-                        child: Text('BALANCE', style: AppTheme.tableHeader),
-                      ),
-                      SizedBox(
-                        width: 150,
-                        child: Text('INVOICE', style: AppTheme.tableHeader),
-                      ),
-                      SizedBox(
-                        width: 130,
-                        child: Text('STATUS', style: AppTheme.tableHeader),
-                      ),
-                    ],
+                  Expanded(
+                    flex: 3,
+                    child: Text('CUSTOMER', style: AppTheme.tableHeader),
                   ),
-                ),
-                ...provider.filteredOrders.map((order) {
-                  return _buildOrderRow(order, provider);
-                }).toList(),
-              ],
+                  Expanded(
+                    flex: 2,
+                    child: Text('ORDER DATE', style: AppTheme.tableHeader),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: Text('DELIVERY', style: AppTheme.tableHeader),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: Text('TOTAL', style: AppTheme.tableHeader),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: Text('STATUS', style: AppTheme.tableHeader),
+                  ),
+                ],
+              ),
             ),
-          ),
+
+            // Table body
+            ...provider.filteredOrders.map((order) {
+              return _buildOrderRow(order, provider);
+            }).toList(),
+          ],
         ),
       ),
     );
   }
 
   Widget _buildOrderRow(Order order, OrderProvider provider) {
-    final totalPaid = (order.totalPaid ?? 0.0);
-    final estimatedTotal = order.estimatedTotal;
-    final balance = estimatedTotal - totalPaid;
-
     return Container(
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: AppTheme.borderLight)),
@@ -376,8 +330,9 @@ class _OrderListScreenState extends State<OrderListScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             children: [
-              SizedBox(
-                width: 180,
+              // Order Number
+              Expanded(
+                flex: 2,
                 child: Text(
                   order.orderNumber ?? 'N/A',
                   style: AppTheme.bodyMediumBold.copyWith(
@@ -385,8 +340,10 @@ class _OrderListScreenState extends State<OrderListScreen> {
                   ),
                 ),
               ),
-              SizedBox(
-                width: 200,
+
+              // Customer
+              Expanded(
+                flex: 3,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -399,15 +356,19 @@ class _OrderListScreenState extends State<OrderListScreen> {
                   ],
                 ),
               ),
-              SizedBox(
-                width: 120,
+
+              // Order Date
+              Expanded(
+                flex: 2,
                 child: Text(
                   order.formattedOrderDate,
                   style: AppTheme.bodySmall,
                 ),
               ),
-              SizedBox(
-                width: 120,
+
+              // Delivery Date
+              Expanded(
+                flex: 2,
                 child: Text(
                   order.formattedExpectedDeliveryDate,
                   style: AppTheme.bodySmall.copyWith(
@@ -417,68 +378,19 @@ class _OrderListScreenState extends State<OrderListScreen> {
                   ),
                 ),
               ),
-              SizedBox(
-                width: 120,
+
+              // Total Amount
+              Expanded(
+                flex: 2,
                 child: Text(
-                  '₹${estimatedTotal.toStringAsFixed(2)}',
+                  '₹${order.estimatedTotal.toStringAsFixed(2)}',
                   style: AppTheme.bodyMediumBold,
                 ),
               ),
-              SizedBox(
-                width: 120,
-                child: Text(
-                  '₹${totalPaid.toStringAsFixed(2)}',
-                  style: AppTheme.bodyMedium.copyWith(color: AppTheme.success),
-                ),
-              ),
-              SizedBox(
-                width: 120,
-                child: Text(
-                  '₹${balance.toStringAsFixed(2)}',
-                  style: AppTheme.bodyMedium.copyWith(
-                    color: balance > 0
-                        ? AppTheme.warning
-                        : AppTheme.textSecondary,
-                    fontWeight: balance > 0
-                        ? FontWeight.w600
-                        : FontWeight.normal,
-                  ),
-                ),
-              ),
-              SizedBox(
-                width: 150,
-                child: FutureBuilder<String?>(
-                  future: _getInvoiceNumber(order.id!),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      );
-                    }
 
-                    if (snapshot.hasData && snapshot.data != null) {
-                      return Text(
-                        snapshot.data!,
-                        style: AppTheme.bodySmall.copyWith(
-                          color: AppTheme.primaryBlue,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      );
-                    }
-
-                    return Text(
-                      'Not Created',
-                      style: AppTheme.bodySmall.copyWith(
-                        color: AppTheme.textMuted,
-                      ),
-                    );
-                  },
-                ),
-              ),
-              SizedBox(
-                width: 130,
+              // Status
+              Expanded(
+                flex: 2,
                 child: OrderStatusBadge(status: order.orderStatus),
               ),
             ],

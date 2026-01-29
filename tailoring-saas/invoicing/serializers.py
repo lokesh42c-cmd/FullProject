@@ -1,6 +1,7 @@
 """
 Invoicing app serializers - Invoice API serializers
-Date: 2026-01-03
+Date: 2026-01-27
+FIXED: Auto-copy items from order when creating invoice
 """
 
 from rest_framework import serializers
@@ -81,7 +82,7 @@ class InvoiceDetailSerializer(serializers.ModelSerializer):
 
 
 class InvoiceCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating/updating invoices"""
+    """Serializer for creating/updating invoices - AUTO-COPIES ORDER ITEMS"""
     
     items = InvoiceItemSerializer(many=True, required=False)
     
@@ -98,10 +99,40 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         items_data = validated_data.pop('items', [])
+        order = validated_data.get('order')
+        
         invoice = Invoice.objects.create(**validated_data)
         
-        for item_data in items_data:
-            InvoiceItem.objects.create(invoice=invoice, **item_data)
+        # ✅ AUTO-COPY ITEMS FROM ORDER
+        if order and not items_data:
+            from orders.models import OrderItem
+            
+            order_items = OrderItem.objects.filter(order=order)
+            for order_item in order_items:
+                # Get GST rate from item master
+                gst_rate = Decimal('0.00')
+                if order_item.item and hasattr(order_item.item, 'tax_percent'):
+                    gst_rate = order_item.item.tax_percent
+                
+                # Get HSN/SAC code from item master
+                hsn_sac = ''
+                if order_item.item and hasattr(order_item.item, 'hsn_sac_code'):
+                    hsn_sac = order_item.item.hsn_sac_code or ''
+                
+                InvoiceItem.objects.create(
+                    invoice=invoice,
+                    item=order_item.item,
+                    item_description=order_item.item_description,
+                    hsn_sac_code=hsn_sac,
+                    quantity=order_item.quantity,
+                    unit_price=order_item.unit_price,
+                    gst_rate=gst_rate,
+                    item_type='SERVICE'  # Default, can be customized
+                )
+        else:
+            # Manual items provided
+            for item_data in items_data:
+                InvoiceItem.objects.create(invoice=invoice, **item_data)
         
         # Calculate totals
         invoice.calculate_totals()

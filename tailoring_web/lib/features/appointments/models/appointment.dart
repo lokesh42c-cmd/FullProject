@@ -23,15 +23,15 @@ class Appointment {
 
   factory Appointment.fromJson(Map<String, dynamic> json) {
     return Appointment(
-      id: json['id'],
-      name: json['name'],
-      phone: json['phone'],
-      date: json['date'],
-      startTime: json['start_time'],
-      durationMinutes: json['duration_minutes'],
+      id: int.tryParse(json['id'].toString()) ?? 0,
+      name: json['name'] ?? '',
+      phone: json['phone'] ?? '',
+      date: json['date'] ?? '',
+      startTime: json['start_time'] ?? '',
+      durationMinutes: int.tryParse(json['duration_minutes'].toString()) ?? 0,
       service: json['service'],
       notes: json['notes'],
-      status: json['status'],
+      status: json['status'] ?? 'SCHEDULED',
     );
   }
 

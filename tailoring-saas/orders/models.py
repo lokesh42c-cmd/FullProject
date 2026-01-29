@@ -414,6 +414,17 @@ class Order(models.Model):
         return False
     
     @property
+    def invoice(self):
+        """
+        Get the invoice for this order (if exists)
+        Returns Invoice object or None
+        """
+        try:
+            return self.invoice  # This works with OneToOneField reverse relation
+        except:
+            return None
+    
+    @property
     def days_until_delivery(self):
         """Days remaining until delivery"""
         if self.expected_delivery_date:

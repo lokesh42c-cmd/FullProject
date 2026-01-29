@@ -12,7 +12,7 @@ class Sidebar extends StatefulWidget {
 
 class _SidebarState extends State<Sidebar> {
   bool _isSalesExpanded = true;
-  bool _isPurchaseExpanded = true; // NEW
+  bool _isPurchaseExpanded = true;
 
   @override
   Widget build(BuildContext context) {
@@ -92,7 +92,6 @@ class _SidebarState extends State<Sidebar> {
                   ],
                 ),
                 const SizedBox(height: 4),
-                // NEW: Purchase Management
                 _buildExpandableSection(
                   context,
                   icon: Icons.shopping_bag_outlined,
