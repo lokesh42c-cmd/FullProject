@@ -30,9 +30,6 @@ class _EditOrderDetailsDialogState extends State<EditOrderDetailsDialog> {
   late String _deliveryStatus;
   int? _assignedTo;
 
-  // ✅ NEW: Check if order has invoice
-  late bool _hasInvoice;
-
   List<Map<String, dynamic>> _employees = [];
   bool _isLoadingEmployees = true;
   bool _isSaving = false;
@@ -59,9 +56,6 @@ class _EditOrderDetailsDialogState extends State<EditOrderDetailsDialog> {
     _orderStatus = widget.orderData['order_status'] ?? 'DRAFT';
     _deliveryStatus = widget.orderData['delivery_status'] ?? 'NOT_STARTED';
     _assignedTo = widget.orderData['assigned_to'];
-
-    // ✅ NEW: Check if invoice exists
-    _hasInvoice = widget.orderData['invoice_id'] != null;
 
     _loadEmployees();
   }
@@ -170,38 +164,6 @@ class _EditOrderDetailsDialogState extends State<EditOrderDetailsDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             _buildHeader(),
-
-            // ✅ NEW: Warning banner if invoice exists
-            if (_hasInvoice)
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.orange.shade50,
-                  border: Border(
-                    bottom: BorderSide(color: Colors.orange.shade200),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.info_outline,
-                      color: Colors.orange.shade700,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'This order has an invoice. Only status, dates, priority, and assignments can be edited.',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.orange.shade900,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24),
@@ -257,23 +219,23 @@ class _EditOrderDetailsDialogState extends State<EditOrderDetailsDialog> {
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Expanded(
-                                    child: Text(
-                                      _actualDeliveryDate != null
-                                          ? _formatDate(_actualDeliveryDate!)
-                                          : 'Not Delivered',
-                                      style: TextStyle(
-                                        color: _actualDeliveryDate != null
-                                            ? AppTheme.textPrimary
-                                            : AppTheme.textMuted,
-                                      ),
+                                  Text(
+                                    _actualDeliveryDate != null
+                                        ? _formatDate(_actualDeliveryDate!)
+                                        : 'Not Set',
+                                    style: AppTheme.bodyMedium.copyWith(
+                                      color: _actualDeliveryDate != null
+                                          ? AppTheme.textPrimary
+                                          : AppTheme.textSecondary,
                                     ),
                                   ),
                                   const Icon(
                                     Icons.calendar_today,
                                     size: 18,
-                                    color: AppTheme.primaryBlue,
+                                    color: AppTheme.textSecondary,
                                   ),
                                 ],
                               ),
@@ -282,8 +244,6 @@ class _EditOrderDetailsDialogState extends State<EditOrderDetailsDialog> {
                         ],
                       ),
 
-                      const SizedBox(height: 24),
-                      const Divider(),
                       const SizedBox(height: 24),
 
                       // Order Status
@@ -314,7 +274,7 @@ class _EditOrderDetailsDialogState extends State<EditOrderDetailsDialog> {
                           ),
                           DropdownMenuItem(
                             value: 'READY',
-                            child: Text('Ready for Delivery'),
+                            child: Text('Ready'),
                           ),
                           DropdownMenuItem(
                             value: 'COMPLETED',
@@ -364,7 +324,7 @@ class _EditOrderDetailsDialogState extends State<EditOrderDetailsDialog> {
 
                       const SizedBox(height: 24),
 
-                      // ✅ FIXED: Delivery Status with correct choices
+                      // Delivery Status
                       Text('Delivery Status', style: AppTheme.heading3),
                       const SizedBox(height: 16),
 
@@ -382,14 +342,13 @@ class _EditOrderDetailsDialogState extends State<EditOrderDetailsDialog> {
                             value: 'NOT_STARTED',
                             child: Text('Not Started'),
                           ),
-                          // ✅ FIXED: Changed from IN_TRANSIT to PARTIAL
                           DropdownMenuItem(
-                            value: 'PARTIAL',
-                            child: Text('Partial Delivery'),
+                            value: 'IN_TRANSIT',
+                            child: Text('In Transit'),
                           ),
                           DropdownMenuItem(
                             value: 'DELIVERED',
-                            child: Text('Fully Delivered'),
+                            child: Text('Delivered'),
                           ),
                         ],
                         onChanged: (value) {

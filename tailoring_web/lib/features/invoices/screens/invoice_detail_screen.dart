@@ -53,7 +53,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return MainLayout(
-      currentSection: 'invoices',
+      currentRoute: '/invoices',
       child: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _invoiceData == null
@@ -75,6 +75,10 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
   }
 
   Widget _buildHeader() {
+    final status = _invoiceData!['status'] ?? 'DRAFT';
+    final totalPaid = _invoiceData!['total_paid'] ?? 0;
+    final canCancel = status != 'CANCELLED' && totalPaid == 0;
+
     return Container(
       padding: const EdgeInsets.all(AppTheme.space5),
       decoration: const BoxDecoration(
@@ -116,6 +120,16 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
             icon: const Icon(Icons.email, size: 18),
             label: const Text('Email'),
           ),
+          // ✅ NEW: Cancel Invoice Button
+          if (canCancel) ...[
+            const SizedBox(width: AppTheme.space2),
+            OutlinedButton.icon(
+              onPressed: _onCancelInvoice,
+              icon: const Icon(Icons.cancel, size: 18),
+              label: const Text('Cancel Invoice'),
+              style: OutlinedButton.styleFrom(foregroundColor: AppTheme.danger),
+            ),
+          ],
         ],
       ),
     );
@@ -214,5 +228,195 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
       default:
         return const SizedBox();
     }
+  }
+
+  // ✅ NEW: Cancel Invoice Handler
+  void _onCancelInvoice() async {
+    // Check for payments first
+    final totalPaid = _invoiceData!['total_paid'] ?? 0;
+
+    if (totalPaid > 0) {
+      _showPaymentsExistDialog();
+      return;
+    }
+
+    // Show reason dialog
+    final reason = await _showCancelReasonDialog();
+    if (reason == null) return;
+
+    // Cancel invoice
+    try {
+      await _apiClient.post(
+        'invoicing/invoices/${widget.invoiceId}/cancel/',
+        data: {'reason': reason},
+      );
+
+      await _loadInvoiceDetails();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Invoice cancelled successfully'),
+            backgroundColor: AppTheme.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to cancel invoice: $e'),
+            backgroundColor: AppTheme.danger,
+          ),
+        );
+      }
+    }
+  }
+
+  // ✅ NEW: Show dialog when payments exist
+  void _showPaymentsExistDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: const [
+            Icon(Icons.warning, color: AppTheme.warning),
+            SizedBox(width: 12),
+            Text('Cannot Cancel Invoice'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'This invoice has payments recorded. You must delete all payments before cancelling the invoice.',
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    color: Colors.orange.shade700,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Total Paid: ₹${_invoiceData!['total_paid']}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: Colors.orange.shade900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              setState(() => _selectedTabIndex = 1); // Switch to Payments tab
+            },
+            child: const Text('Go to Payments'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ✅ NEW: Cancel Reason Dialog
+  Future<String?> _showCancelReasonDialog() async {
+    final controller = TextEditingController();
+
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel Invoice'),
+        content: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Invoice: ${_invoiceData!['invoice_number']}',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              Text('Amount: ₹${_invoiceData!['grand_total']}'),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.red.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning, color: Colors.red.shade700, size: 20),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        '⚠️ This action cannot be undone',
+                        style: TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                maxLines: 3,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  labelText: 'Reason for cancellation *',
+                  hintText: 'Enter reason...',
+                  helperText: 'Required',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (controller.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Reason is required'),
+                    backgroundColor: AppTheme.danger,
+                  ),
+                );
+                return;
+              }
+              Navigator.pop(context, controller.text.trim());
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.danger),
+            child: const Text('Confirm Cancellation'),
+          ),
+        ],
+      ),
+    );
   }
 }

@@ -88,11 +88,7 @@ class _SidebarState extends State<Sidebar> {
                     _buildSubNavItem(context, 'Items', '/items'),
                     _buildSubNavItem(context, 'Orders', '/orders'),
                     _buildSubNavItem(context, 'Invoices', '/invoices'),
-                    _buildSubNavItem(
-                      context,
-                      'Payments Received',
-                      '/payments-received',
-                    ),
+                    _buildSubNavItem(context, 'Payments Received', '/payments'),
                   ],
                 ),
                 const SizedBox(height: 4),
@@ -156,9 +152,7 @@ class _SidebarState extends State<Sidebar> {
     required String route,
     required bool hasSubmenu,
   }) {
-    final isActive =
-        widget.currentRoute == route ||
-        (route != '/dashboard' && widget.currentRoute.startsWith(route));
+    final isActive = widget.currentRoute == route;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -166,15 +160,8 @@ class _SidebarState extends State<Sidebar> {
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
-            print('🔍 Sidebar navigation: $route'); // ✅ Debug log
             if (route != widget.currentRoute) {
-              // ✅ FIXED: Try named route first, fallback if it fails
-              try {
-                Navigator.pushReplacementNamed(context, route);
-              } catch (e) {
-                print('❌ Named route failed, trying pushReplacement: $e');
-                // This shouldn't happen but good to have fallback
-              }
+              Navigator.pushReplacementNamed(context, route);
             }
           },
           borderRadius: BorderRadius.circular(4),
@@ -262,9 +249,7 @@ class _SidebarState extends State<Sidebar> {
   }
 
   Widget _buildSubNavItem(BuildContext context, String label, String route) {
-    final isActive =
-        widget.currentRoute == route ||
-        widget.currentRoute.startsWith('$route/');
+    final isActive = widget.currentRoute == route;
 
     return Padding(
       padding: const EdgeInsets.only(left: 16, right: 8, bottom: 2),
@@ -272,30 +257,8 @@ class _SidebarState extends State<Sidebar> {
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
-            print('🔍 Sidebar sub-nav clicked: $route'); // ✅ Debug log
-            print('🔍 Current route: ${widget.currentRoute}'); // ✅ Debug log
-
             if (route != widget.currentRoute) {
-              // ✅ FIXED: Better error handling
-              try {
-                print('🚀 Attempting navigation to: $route');
-                Navigator.pushReplacementNamed(context, route).catchError((
-                  error,
-                ) {
-                  print('❌ Navigation error: $error');
-                  // Show error to user
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Navigation failed: $route'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                });
-              } catch (e) {
-                print('❌ Exception during navigation: $e');
-              }
-            } else {
-              print('⚠️ Already on route: $route');
+              Navigator.pushReplacementNamed(context, route);
             }
           },
           borderRadius: BorderRadius.circular(4),

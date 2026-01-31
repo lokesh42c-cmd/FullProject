@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:tailoring_web/core/theme/app_theme.dart';
 import 'package:tailoring_web/core/api/api_client.dart';
-import '../../payments_received/widgets/dialogs/record_payment_dialog.dart';
+import 'package:tailoring_web/features/financials/widgets/record_payment_dialog.dart';
 
 class InvoicePaymentsTab extends StatefulWidget {
   final int invoiceId;
@@ -42,18 +42,18 @@ class _InvoicePaymentsTabState extends State<InvoicePaymentsTab> {
     try {
       final orderId = widget.invoiceData['order'];
 
-      // Fetch advances (receipt vouchers)
+      // ✅ FIX 1: Changed 'params' to 'queryParameters'
       final advancesResponse = await _apiClient.get(
         'financials/receipts/',
-        params: {'order': orderId},
+        queryParameters: {'order': orderId},
       );
       final advancesList = (advancesResponse.data['results'] as List? ?? [])
           .cast<Map<String, dynamic>>();
 
-      // Fetch invoice payments
+      // ✅ FIX 2: Changed 'params' to 'queryParameters'
       final invoicePaymentsResponse = await _apiClient.get(
         'financials/payments/',
-        params: {'invoice': widget.invoiceId},
+        queryParameters: {'invoice': widget.invoiceId},
       );
       final invoicePaymentsList =
           (invoicePaymentsResponse.data['results'] as List? ?? [])
@@ -65,7 +65,6 @@ class _InvoicePaymentsTabState extends State<InvoicePaymentsTab> {
       for (var adv in advancesList) {
         final amount = (adv['amount'] ?? 0).toDouble();
         totalAdv += amount;
-        // Check if applied to this invoice
         if (adv['invoice_id'] == widget.invoiceId) {
           appliedAdv += amount;
         }
@@ -115,10 +114,13 @@ class _InvoicePaymentsTabState extends State<InvoicePaymentsTab> {
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => RecordPaymentDialog(
-        orderId: widget.invoiceData['order'],
+        // ✅ FIX 3: Using direct named parameters for the dialog
+        orderData: widget.invoiceData,
         invoiceId: widget.invoiceId,
-        maxAmount: balanceDue,
-        isInvoicePayment: true,
+        onPaymentRecorded: () {
+          _loadPayments();
+          widget.onPaymentRecorded();
+        },
       ),
     );
 
@@ -151,15 +153,12 @@ class _InvoicePaymentsTabState extends State<InvoicePaymentsTab> {
             ],
           ),
           const SizedBox(height: AppTheme.space4),
-
           if (_advances.isNotEmpty) ...[
             _buildAdvancesSection(),
             const SizedBox(height: AppTheme.space4),
           ],
-
           _buildInvoicePaymentsSection(),
           const SizedBox(height: AppTheme.space4),
-
           _buildPaymentSummary(),
         ],
       ),

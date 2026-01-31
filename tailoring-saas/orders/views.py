@@ -176,17 +176,46 @@ class OrderViewSet(viewsets.ModelViewSet):
         )
     
     def perform_update(self, serializer):
+        """✅ FIXED: Allow editing certain fields even when order is locked"""
         instance = serializer.instance
+        
+        # Check tenant permission
         if instance.tenant != self.request.user.tenant:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("You don't have permission to edit this order.")
         
-        if instance.is_locked:
-            from rest_framework.exceptions import ValidationError
-            raise ValidationError("This order is locked and cannot be modified.")
+        # Fields that CAN be edited when order is locked (has invoice)
+        EDITABLE_AFTER_LOCK = {
+            'order_status',
+            'delivery_status',
+            'priority',
+            'expected_delivery_date',
+            'actual_delivery_date',
+            'assigned_to',
+            'payment_terms',
+            'customer_instructions',
+            'order_summary',
+        }
         
+        # If order is locked
+        if instance.is_locked:
+            # Get fields being updated
+            update_fields = set(serializer.validated_data.keys())
+            
+            # Check if trying to edit non-editable fields
+            non_editable = update_fields - EDITABLE_AFTER_LOCK
+            
+            if non_editable:
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError({
+                    'error': f'Cannot modify {", ".join(non_editable)} - order has invoice',
+                    'detail': 'Only status, dates, priority, and notes can be edited after invoice creation',
+                    'allowed_fields': list(EDITABLE_AFTER_LOCK)
+                })
+        
+        # Save with updated_by
         serializer.save(updated_by=self.request.user)
-    
+
     @action(detail=True, methods=['post'])
     def lock(self, request, pk=None):
         order = self.get_object()
