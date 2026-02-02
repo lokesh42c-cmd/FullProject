@@ -61,7 +61,7 @@ class TailoringWebApp extends StatelessWidget {
         ),
 
         // ✅ Added InvoiceProvider to match the others
-        ChangeNotifierProvider(create: (_) => InvoiceProvider(apiClient)),
+        ChangeNotifierProvider(create: (_) => InvoiceProvider()),
       ],
       child: MaterialApp(
         title: 'Tailoring Web',

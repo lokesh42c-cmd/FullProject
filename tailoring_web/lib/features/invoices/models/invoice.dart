@@ -184,9 +184,89 @@ class Invoice {
     if (value is String) return double.tryParse(value) ?? 0.0;
     return 0.0;
   }
+
+  /// Helper: Get formatted grand total
+  String get formattedGrandTotal {
+    return '₹${grandTotal.toStringAsFixed(2)}';
+  }
+
+  /// Helper: Get formatted balance due
+  String get formattedBalanceDue {
+    return '₹${balanceDue.toStringAsFixed(2)}';
+  }
+
+  /// Helper: Check if invoice is editable
+  bool get isEditable {
+    return status == 'DRAFT';
+  }
+
+  /// Helper: Check if invoice can be issued
+  bool get canBeIssued {
+    return status == 'DRAFT';
+  }
+
+  /// Helper: Check if invoice can be cancelled
+  bool get canBeCancelled {
+    return status != 'PAID' && status != 'CANCELLED';
+  }
+
+  /// CopyWith method for creating modified copies
+  Invoice copyWith({
+    int? id,
+    String? invoiceNumber,
+    String? invoiceDate,
+    int? customer,
+    String? customerName,
+    String? customerPhone,
+    int? order,
+    String? orderNumber,
+    String? status,
+    String? billingName,
+    String? billingAddress,
+    String? billingCity,
+    String? billingState,
+    String? billingPincode,
+    String? billingGstin,
+    String? shippingName,
+    String? shippingAddress,
+    String? shippingCity,
+    String? shippingState,
+    String? shippingPincode,
+    String? taxType,
+    List<InvoiceItem>? items,
+    String? notes,
+    String? termsAndConditions,
+  }) {
+    return Invoice(
+      id: id ?? this.id,
+      invoiceNumber: invoiceNumber ?? this.invoiceNumber,
+      invoiceDate: invoiceDate ?? this.invoiceDate,
+      customer: customer ?? this.customer,
+      customerName: customerName ?? this.customerName,
+      customerPhone: customerPhone ?? this.customerPhone,
+      order: order ?? this.order,
+      orderNumber: orderNumber ?? this.orderNumber,
+      status: status ?? this.status,
+      billingName: billingName ?? this.billingName,
+      billingAddress: billingAddress ?? this.billingAddress,
+      billingCity: billingCity ?? this.billingCity,
+      billingState: billingState ?? this.billingState,
+      billingPincode: billingPincode ?? this.billingPincode,
+      billingGstin: billingGstin ?? this.billingGstin,
+      shippingName: shippingName ?? this.shippingName,
+      shippingAddress: shippingAddress ?? this.shippingAddress,
+      shippingCity: shippingCity ?? this.shippingCity,
+      shippingState: shippingState ?? this.shippingState,
+      shippingPincode: shippingPincode ?? this.shippingPincode,
+      taxType: taxType ?? this.taxType,
+      items: items ?? this.items,
+      notes: notes ?? this.notes,
+      termsAndConditions: termsAndConditions ?? this.termsAndConditions,
+    );
+  }
 }
 
-/// Invoice Item Model
+/// Invoice Item Model - UPDATED with discount field
 /// Matches backend invoicing.InvoiceItem
 class InvoiceItem {
   final int? id;
@@ -197,6 +277,7 @@ class InvoiceItem {
   final String itemType; // GOODS, SERVICE
   final double quantity;
   final double unitPrice;
+  final double discount; // ✅ ADDED: Discount field
   final double gstRate;
 
   // Calculated fields (read-only from backend)
@@ -216,6 +297,7 @@ class InvoiceItem {
     this.itemType = 'SERVICE',
     this.quantity = 1.0,
     this.unitPrice = 0.0,
+    this.discount = 0.0, // ✅ ADDED: Default value
     this.gstRate = 0.0,
     this.subtotal,
     this.cgstAmount,
@@ -235,6 +317,7 @@ class InvoiceItem {
       itemType: json['item_type'] ?? 'SERVICE',
       quantity: _parseDouble(json['quantity']),
       unitPrice: _parseDouble(json['unit_price']),
+      discount: _parseDouble(json['discount']), // ✅ ADDED
       gstRate: _parseDouble(json['gst_rate']),
       subtotal: _parseDouble(json['subtotal']),
       cgstAmount: _parseDouble(json['cgst_amount']),
@@ -254,6 +337,7 @@ class InvoiceItem {
       'item_type': itemType,
       'quantity': quantity,
       'unit_price': unitPrice,
+      'discount': discount, // ✅ ADDED
       'gst_rate': gstRate,
     };
   }
@@ -266,9 +350,9 @@ class InvoiceItem {
     return 0.0;
   }
 
-  // Client-side calculation helpers
+  // Client-side calculation helpers - UPDATED to include discount
   double calculateSubtotal() {
-    return quantity * unitPrice;
+    return (quantity * unitPrice) - discount; // ✅ UPDATED: Subtract discount
   }
 
   double calculateCgst(String taxType) {
@@ -297,5 +381,38 @@ class InvoiceItem {
         calculateCgst(taxType) +
         calculateSgst(taxType) +
         calculateIgst(taxType);
+  }
+
+  /// Helper: Get formatted total
+  String get formattedTotal {
+    final total = subtotal ?? calculateSubtotal();
+    return '₹${total.toStringAsFixed(2)}';
+  }
+
+  /// CopyWith method - UPDATED with discount
+  InvoiceItem copyWith({
+    int? id,
+    int? item,
+    String? itemName,
+    String? itemDescription,
+    String? hsnSacCode,
+    String? itemType,
+    double? quantity,
+    double? unitPrice,
+    double? discount, // ✅ ADDED
+    double? gstRate,
+  }) {
+    return InvoiceItem(
+      id: id ?? this.id,
+      item: item ?? this.item,
+      itemName: itemName ?? this.itemName,
+      itemDescription: itemDescription ?? this.itemDescription,
+      hsnSacCode: hsnSacCode ?? this.hsnSacCode,
+      itemType: itemType ?? this.itemType,
+      quantity: quantity ?? this.quantity,
+      unitPrice: unitPrice ?? this.unitPrice,
+      discount: discount ?? this.discount, // ✅ ADDED
+      gstRate: gstRate ?? this.gstRate,
+    );
   }
 }

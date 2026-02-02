@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:tailoring_web/core/theme/app_theme.dart';
-import 'package:tailoring_web/core/api/api_client.dart';
-import '../../../core/layouts/main_layout.dart';
-import 'invoice_detail_tabs/invoice_details_tab.dart';
-import 'invoice_detail_tabs/invoice_payments_tab.dart';
+import 'package:tailoring_web/core/layouts/main_layout.dart';
 
+import 'package:tailoring_web/features/invoices/models/invoice.dart';
+import 'package:tailoring_web/features/invoices/providers/invoice_provider.dart';
+import 'package:intl/intl.dart';
+
+/// Invoice Detail Screen
+/// Displays complete invoice details with actions
 class InvoiceDetailScreen extends StatefulWidget {
   final int invoiceId;
 
@@ -15,408 +19,696 @@ class InvoiceDetailScreen extends StatefulWidget {
 }
 
 class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
-  final _apiClient = ApiClient();
-  Map<String, dynamic>? _invoiceData;
+  Invoice? _invoice;
   bool _isLoading = true;
-  int _selectedTabIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    _loadInvoiceDetails();
+    _loadInvoice();
   }
 
-  Future<void> _loadInvoiceDetails() async {
+  Future<void> _loadInvoice() async {
     setState(() => _isLoading = true);
-
-    try {
-      final response = await _apiClient.get(
-        'invoicing/invoices/${widget.invoiceId}/',
-      );
-      setState(() {
-        _invoiceData = response.data;
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() => _isLoading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to load invoice: $e'),
-            backgroundColor: AppTheme.danger,
-          ),
-        );
-      }
-    }
+    final provider = context.read<InvoiceProvider>();
+    final invoice = await provider.fetchInvoiceById(widget.invoiceId);
+    setState(() {
+      _invoice = invoice;
+      _isLoading = false;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return MainLayout(
       currentRoute: '/invoices',
-      child: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _invoiceData == null
-          ? const Center(child: Text('Invoice not found'))
-          : _buildContent(),
+      child: Scaffold(
+        backgroundColor: AppTheme.backgroundGray,
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _invoice == null
+            ? _buildError()
+            : Column(
+                children: [
+                  _buildHeader(),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(20),
+                      child: _buildInvoiceContent(),
+                    ),
+                  ),
+                ],
+              ),
+      ),
     );
   }
 
-  Widget _buildContent() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildHeader(),
-        const SizedBox(height: AppTheme.space4),
-        _buildTabs(),
-        Expanded(child: _buildTabContent()),
-      ],
+  Widget _buildError() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.error_outline, size: 64, color: AppTheme.error),
+          const SizedBox(height: 16),
+          Text('Invoice not found', style: AppTheme.heading3),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Go Back'),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildHeader() {
-    final status = _invoiceData!['status'] ?? 'DRAFT';
-    final totalPaid = _invoiceData!['total_paid'] ?? 0;
-    final canCancel = status != 'CANCELLED' && totalPaid == 0;
-
     return Container(
-      padding: const EdgeInsets.all(AppTheme.space5),
-      decoration: const BoxDecoration(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
         color: AppTheme.backgroundWhite,
         border: Border(bottom: BorderSide(color: AppTheme.borderLight)),
       ),
       child: Row(
         children: [
           IconButton(
-            icon: const Icon(Icons.arrow_back, size: 20),
+            icon: const Icon(Icons.arrow_back),
             onPressed: () => Navigator.pop(context),
           ),
-          const SizedBox(width: AppTheme.space3),
+          const SizedBox(width: 12),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Invoice Details', style: AppTheme.heading2),
+              Text(_invoice!.invoiceNumber, style: AppTheme.heading2),
               Text(
-                _invoiceData!['invoice_number'] ?? 'N/A',
-                style: AppTheme.bodySmall.copyWith(color: AppTheme.textMuted),
+                _invoice!.customerName ?? 'Unknown Customer',
+                style: AppTheme.bodySmall.copyWith(
+                  color: AppTheme.textSecondary,
+                ),
               ),
             ],
           ),
           const Spacer(),
-          _buildStatusBadge(),
-          const SizedBox(width: AppTheme.space3),
-          OutlinedButton.icon(
-            onPressed: () {
-              // TODO: Print invoice
-            },
-            icon: const Icon(Icons.print, size: 18),
-            label: const Text('Print'),
-          ),
-          const SizedBox(width: AppTheme.space2),
-          OutlinedButton.icon(
-            onPressed: () {
-              // TODO: Email invoice
-            },
-            icon: const Icon(Icons.email, size: 18),
-            label: const Text('Email'),
-          ),
-          // ✅ NEW: Cancel Invoice Button
-          if (canCancel) ...[
-            const SizedBox(width: AppTheme.space2),
-            OutlinedButton.icon(
-              onPressed: _onCancelInvoice,
-              icon: const Icon(Icons.cancel, size: 18),
-              label: const Text('Cancel Invoice'),
-              style: OutlinedButton.styleFrom(foregroundColor: AppTheme.danger),
-            ),
-          ],
+          _buildActionButtons(),
         ],
       ),
     );
   }
 
-  Widget _buildStatusBadge() {
-    final status = _invoiceData!['status'] ?? 'DRAFT';
-    Color bgColor;
-    Color textColor;
+  Widget _buildActionButtons() {
+    return Row(
+      children: [
+        // Issue Button (if DRAFT)
+        if (_invoice!.status == 'DRAFT')
+          ElevatedButton.icon(
+            onPressed: _handleIssue,
+            icon: const Icon(Icons.check_circle),
+            label: const Text('Issue Invoice'),
+          ),
 
-    switch (status) {
-      case 'ISSUED':
-        bgColor = Colors.blue.shade50;
-        textColor = Colors.blue.shade700;
-        break;
-      case 'PAID':
-        bgColor = Colors.green.shade50;
-        textColor = Colors.green.shade700;
-        break;
-      case 'CANCELLED':
-        bgColor = Colors.red.shade50;
-        textColor = Colors.red.shade700;
-        break;
-      default:
-        bgColor = Colors.grey.shade50;
-        textColor = Colors.grey.shade700;
-    }
+        const SizedBox(width: 12),
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
-      ),
-      child: Text(
-        _invoiceData!['status_display'] ?? status,
-        style: TextStyle(
-          color: textColor,
-          fontWeight: FontWeight.w600,
-          fontSize: 12,
+        // Cancel Button (if not PAID or CANCELLED)
+        if (_invoice!.status != 'PAID' && _invoice!.status != 'CANCELLED')
+          OutlinedButton.icon(
+            onPressed: _handleCancel,
+            icon: const Icon(Icons.cancel),
+            label: const Text('Cancel'),
+            style: OutlinedButton.styleFrom(foregroundColor: AppTheme.error),
+          ),
+
+        const SizedBox(width: 12),
+
+        // Print Button
+        OutlinedButton.icon(
+          onPressed: _handlePrint,
+          icon: const Icon(Icons.print),
+          label: const Text('Print'),
         ),
+      ],
+    );
+  }
+
+  Widget _buildInvoiceContent() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundWhite,
+        borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
+        border: Border.all(color: AppTheme.borderLight),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Status Banner
+          _buildStatusBanner(),
+
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Invoice Info Row
+                _buildInvoiceInfo(),
+                const Divider(height: 32),
+
+                // Addresses Row
+                _buildAddresses(),
+                const Divider(height: 32),
+
+                // Items Table
+                _buildItemsTable(),
+                const Divider(height: 32),
+
+                // Financial Summary
+                _buildFinancialSummary(),
+
+                // Notes
+                if (_invoice!.notes != null && _invoice!.notes!.isNotEmpty) ...[
+                  const Divider(height: 32),
+                  _buildNotes(),
+                ],
+
+                // Terms
+                if (_invoice!.termsAndConditions != null &&
+                    _invoice!.termsAndConditions!.isNotEmpty) ...[
+                  const Divider(height: 32),
+                  _buildTerms(),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildTabs() {
+  Widget _buildStatusBanner() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: AppTheme.space5),
-      decoration: const BoxDecoration(
-        color: AppTheme.backgroundWhite,
-        border: Border(bottom: BorderSide(color: AppTheme.borderLight)),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _getStatusColor(_invoice!.status).withOpacity(0.1),
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(AppTheme.radiusSmall),
+          topRight: Radius.circular(AppTheme.radiusSmall),
+        ),
       ),
       child: Row(
-        children: [_buildTab('Invoice Details', 0), _buildTab('Payments', 1)],
-      ),
-    );
-  }
-
-  Widget _buildTab(String label, int index) {
-    final isSelected = _selectedTabIndex == index;
-
-    return InkWell(
-      onTap: () => setState(() => _selectedTabIndex = index),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: isSelected ? AppTheme.primaryBlue : Colors.transparent,
-              width: 2,
+        children: [
+          Icon(
+            _getStatusIcon(_invoice!.status),
+            color: _getStatusColor(_invoice!.status),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            'Status: ${_invoice!.statusDisplay ?? _invoice!.status}',
+            style: AppTheme.bodyMedium.copyWith(
+              color: _getStatusColor(_invoice!.status),
+              fontWeight: AppTheme.fontSemibold,
             ),
           ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isSelected ? AppTheme.primaryBlue : AppTheme.textMuted,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-            fontSize: 14,
+          const SizedBox(width: 24),
+          Icon(
+            Icons.payments,
+            color: _getPaymentStatusColor(_invoice!.paymentStatus),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTabContent() {
-    switch (_selectedTabIndex) {
-      case 0:
-        return InvoiceDetailsTab(invoiceData: _invoiceData!);
-      case 1:
-        return InvoicePaymentsTab(
-          invoiceId: widget.invoiceId,
-          invoiceData: _invoiceData!,
-          onPaymentRecorded: _loadInvoiceDetails,
-        );
-      default:
-        return const SizedBox();
-    }
-  }
-
-  // ✅ NEW: Cancel Invoice Handler
-  void _onCancelInvoice() async {
-    // Check for payments first
-    final totalPaid = _invoiceData!['total_paid'] ?? 0;
-
-    if (totalPaid > 0) {
-      _showPaymentsExistDialog();
-      return;
-    }
-
-    // Show reason dialog
-    final reason = await _showCancelReasonDialog();
-    if (reason == null) return;
-
-    // Cancel invoice
-    try {
-      await _apiClient.post(
-        'invoicing/invoices/${widget.invoiceId}/cancel/',
-        data: {'reason': reason},
-      );
-
-      await _loadInvoiceDetails();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Invoice cancelled successfully'),
-            backgroundColor: AppTheme.success,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to cancel invoice: $e'),
-            backgroundColor: AppTheme.danger,
-          ),
-        );
-      }
-    }
-  }
-
-  // ✅ NEW: Show dialog when payments exist
-  void _showPaymentsExistDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: const [
-            Icon(Icons.warning, color: AppTheme.warning),
-            SizedBox(width: 12),
-            Text('Cannot Cancel Invoice'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'This invoice has payments recorded. You must delete all payments before cancelling the invoice.',
+          const SizedBox(width: 8),
+          Text(
+            'Payment: ${_invoice!.paymentStatusDisplay ?? _invoice!.paymentStatus}',
+            style: AppTheme.bodyMedium.copyWith(
+              color: _getPaymentStatusColor(_invoice!.paymentStatus),
+              fontWeight: AppTheme.fontSemibold,
             ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.orange.shade50,
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: Colors.orange.shade200),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.info_outline,
-                    color: Colors.orange.shade700,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Total Paid: ₹${_invoiceData!['total_paid']}',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: Colors.orange.shade900,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              setState(() => _selectedTabIndex = 1); // Switch to Payments tab
-            },
-            child: const Text('Go to Payments'),
           ),
         ],
       ),
     );
   }
 
-  // ✅ NEW: Cancel Reason Dialog
-  Future<String?> _showCancelReasonDialog() async {
-    final controller = TextEditingController();
-
-    return showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Cancel Invoice'),
-        content: SizedBox(
-          width: 400,
+  Widget _buildInvoiceInfo() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text('Invoice Number', style: _labelStyle),
+              Text(_invoice!.invoiceNumber, style: _valueStyle),
+            ],
+          ),
+        ),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Invoice Date', style: _labelStyle),
+              Text(_formatDate(_invoice!.invoiceDate), style: _valueStyle),
+            ],
+          ),
+        ),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Tax Type', style: _labelStyle),
               Text(
-                'Invoice: ${_invoiceData!['invoice_number']}',
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              Text('Amount: ₹${_invoiceData!['grand_total']}'),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: Colors.red.shade200),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.warning, color: Colors.red.shade700, size: 20),
-                    const SizedBox(width: 8),
-                    const Expanded(
-                      child: Text(
-                        '⚠️ This action cannot be undone',
-                        style: TextStyle(fontWeight: FontWeight.w500),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: controller,
-                maxLines: 3,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  labelText: 'Reason for cancellation *',
-                  hintText: 'Enter reason...',
-                  helperText: 'Required',
-                ),
+                _invoice!.taxTypeDisplay ?? _invoice!.taxType,
+                style: _valueStyle,
               ),
             ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+        if (_invoice!.orderNumber != null)
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Order Reference', style: _labelStyle),
+                Text(_invoice!.orderNumber!, style: _valueStyle),
+              ],
+            ),
           ),
-          ElevatedButton(
-            onPressed: () {
-              if (controller.text.trim().isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Reason is required'),
-                    backgroundColor: AppTheme.danger,
+      ],
+    );
+  }
+
+  Widget _buildAddresses() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Billing Address', style: AppTheme.heading3),
+              const SizedBox(height: 12),
+              Text(_invoice!.billingName, style: _valueStyle),
+              const SizedBox(height: 4),
+              Text(_invoice!.billingAddress, style: _secondaryStyle),
+              if (_invoice!.billingCity != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  '${_invoice!.billingCity}, ${_invoice!.billingState}${_invoice!.billingPincode != null ? " - ${_invoice!.billingPincode}" : ""}',
+                  style: _secondaryStyle,
+                ),
+              ],
+              if (_invoice!.billingGstin != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'GSTIN: ${_invoice!.billingGstin}',
+                  style: _secondaryStyle,
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(width: 32),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Shipping Address', style: AppTheme.heading3),
+              const SizedBox(height: 12),
+              if (_invoice!.shippingName != null &&
+                  _invoice!.shippingName!.isNotEmpty) ...[
+                Text(_invoice!.shippingName!, style: _valueStyle),
+                const SizedBox(height: 4),
+                if (_invoice!.shippingAddress != null)
+                  Text(_invoice!.shippingAddress!, style: _secondaryStyle),
+                if (_invoice!.shippingCity != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '${_invoice!.shippingCity}, ${_invoice!.shippingState}${_invoice!.shippingPincode != null ? " - ${_invoice!.shippingPincode}" : ""}',
+                    style: _secondaryStyle,
                   ),
-                );
-                return;
-              }
-              Navigator.pop(context, controller.text.trim());
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.danger),
-            child: const Text('Confirm Cancellation'),
+                ],
+              ] else ...[
+                Text(
+                  'Same as billing address',
+                  style: _secondaryStyle.copyWith(fontStyle: FontStyle.italic),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildItemsTable() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Invoice Items', style: AppTheme.heading3),
+        const SizedBox(height: 16),
+        Table(
+          border: TableBorder.all(color: AppTheme.borderLight),
+          columnWidths: const {
+            0: FlexColumnWidth(0.5),
+            1: FlexColumnWidth(3),
+            2: FlexColumnWidth(1),
+            3: FlexColumnWidth(1),
+            4: FlexColumnWidth(1),
+            5: FlexColumnWidth(1),
+            6: FlexColumnWidth(1.5),
+          },
+          children: [
+            // Header
+            TableRow(
+              decoration: BoxDecoration(color: AppTheme.backgroundGray),
+              children: [
+                _buildTableHeader('#'),
+                _buildTableHeader('Description'),
+                _buildTableHeader('HSN/SAC'),
+                _buildTableHeader('Qty'),
+                _buildTableHeader('Price'),
+                _buildTableHeader('GST %'),
+                _buildTableHeader('Total'),
+              ],
+            ),
+            // Items
+            ...(_invoice!.items ?? []).asMap().entries.map((entry) {
+              final index = entry.key;
+              final item = entry.value;
+              return TableRow(
+                children: [
+                  _buildTableCell('${index + 1}'),
+                  _buildTableCell(item.itemDescription),
+                  _buildTableCell(item.hsnSacCode ?? '-'),
+                  _buildTableCell(item.quantity.toString()),
+                  _buildTableCell('₹${item.unitPrice.toStringAsFixed(2)}'),
+                  _buildTableCell('${item.gstRate.toStringAsFixed(0)}%'),
+                  _buildTableCell(
+                    '₹${(item.totalAmount ?? item.calculateTotalAmount(_invoice!.taxType)).toStringAsFixed(2)}',
+                    isBold: true,
+                  ),
+                ],
+              );
+            }).toList(),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFinancialSummary() {
+    return Row(
+      children: [
+        const Spacer(),
+        Container(
+          width: 400,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppTheme.backgroundGray,
+            borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
+          ),
+          child: Column(
+            children: [
+              _buildSummaryRow('Subtotal', _invoice!.subtotal),
+              if (_invoice!.taxType == 'INTRASTATE') ...[
+                _buildSummaryRow(
+                  'CGST',
+                  _invoice!.totalCgst,
+                  isSecondary: true,
+                ),
+                _buildSummaryRow(
+                  'SGST',
+                  _invoice!.totalSgst,
+                  isSecondary: true,
+                ),
+              ] else if (_invoice!.taxType == 'INTERSTATE') ...[
+                _buildSummaryRow(
+                  'IGST',
+                  _invoice!.totalIgst,
+                  isSecondary: true,
+                ),
+              ],
+              const Divider(),
+              _buildSummaryRow(
+                'Grand Total',
+                _invoice!.grandTotal,
+                isBold: true,
+                isLarge: true,
+              ),
+              if (_invoice!.totalAdvanceAdjusted > 0) ...[
+                const SizedBox(height: 8),
+                _buildSummaryRow(
+                  'Advance Adjusted',
+                  _invoice!.totalAdvanceAdjusted,
+                  isSecondary: true,
+                  isNegative: true,
+                ),
+                const Divider(),
+                _buildSummaryRow(
+                  'Balance Due',
+                  _invoice!.balanceDue,
+                  isBold: true,
+                ),
+              ],
+              if (_invoice!.totalPaid > 0) ...[
+                const SizedBox(height: 8),
+                _buildSummaryRow(
+                  'Total Paid',
+                  _invoice!.totalPaid,
+                  isSecondary: true,
+                  isNegative: true,
+                ),
+                _buildSummaryRow(
+                  'Remaining Balance',
+                  _invoice!.remainingBalance,
+                  isBold: true,
+                  color: _invoice!.remainingBalance > 0
+                      ? AppTheme.error
+                      : AppTheme.success,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNotes() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Notes', style: AppTheme.heading3),
+        const SizedBox(height: 8),
+        Text(_invoice!.notes!, style: _secondaryStyle),
+      ],
+    );
+  }
+
+  Widget _buildTerms() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Terms & Conditions', style: AppTheme.heading3),
+        const SizedBox(height: 8),
+        Text(_invoice!.termsAndConditions!, style: _secondaryStyle),
+      ],
+    );
+  }
+
+  Widget _buildTableHeader(String text) {
+    return Padding(
+      padding: const EdgeInsets.all(8),
+      child: Text(
+        text,
+        style: AppTheme.bodySmall.copyWith(fontWeight: AppTheme.fontSemibold),
+      ),
+    );
+  }
+
+  Widget _buildTableCell(String text, {bool isBold = false}) {
+    return Padding(
+      padding: const EdgeInsets.all(8),
+      child: Text(
+        text,
+        style: AppTheme.bodySmall.copyWith(
+          fontWeight: isBold ? AppTheme.fontSemibold : AppTheme.fontRegular,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryRow(
+    String label,
+    double amount, {
+    bool isBold = false,
+    bool isLarge = false,
+    bool isSecondary = false,
+    bool isNegative = false,
+    Color? color,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: (isLarge ? AppTheme.bodyLarge : AppTheme.bodyMedium)
+                .copyWith(
+                  fontWeight: isBold ? AppTheme.fontBold : AppTheme.fontRegular,
+                  color: isSecondary
+                      ? AppTheme.textSecondary
+                      : AppTheme.textPrimary,
+                ),
+          ),
+          Text(
+            '${isNegative ? '- ' : ''}₹${amount.toStringAsFixed(2)}',
+            style: (isLarge ? AppTheme.bodyLarge : AppTheme.bodyMedium)
+                .copyWith(
+                  fontWeight: isBold ? AppTheme.fontBold : AppTheme.fontRegular,
+                  color:
+                      color ??
+                      (isSecondary
+                          ? AppTheme.textSecondary
+                          : AppTheme.textPrimary),
+                ),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _handleIssue() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Issue Invoice'),
+        content: const Text('Are you sure you want to issue this invoice?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Issue'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      final provider = context.read<InvoiceProvider>();
+      final success = await provider.issueInvoice(_invoice!.id!);
+
+      if (success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Invoice issued successfully'),
+            backgroundColor: AppTheme.success,
+          ),
+        );
+        _loadInvoice();
+      }
+    }
+  }
+
+  Future<void> _handleCancel() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel Invoice'),
+        content: const Text('Are you sure you want to cancel this invoice?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
+            child: const Text('Yes, Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      final provider = context.read<InvoiceProvider>();
+      final success = await provider.cancelInvoice(_invoice!.id!);
+
+      if (success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Invoice cancelled'),
+            backgroundColor: AppTheme.warning,
+          ),
+        );
+        _loadInvoice();
+      }
+    }
+  }
+
+  void _handlePrint() {
+    // TODO: Implement print functionality
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Print functionality coming soon')),
+    );
+  }
+
+  TextStyle get _labelStyle =>
+      AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary);
+
+  TextStyle get _valueStyle =>
+      AppTheme.bodyMedium.copyWith(fontWeight: AppTheme.fontSemibold);
+
+  TextStyle get _secondaryStyle =>
+      AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary);
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'DRAFT':
+        return AppTheme.textMuted;
+      case 'ISSUED':
+        return AppTheme.primaryBlue;
+      case 'PAID':
+        return AppTheme.success;
+      case 'CANCELLED':
+        return AppTheme.error;
+      default:
+        return AppTheme.textSecondary;
+    }
+  }
+
+  IconData _getStatusIcon(String status) {
+    switch (status) {
+      case 'DRAFT':
+        return Icons.edit;
+      case 'ISSUED':
+        return Icons.send;
+      case 'PAID':
+        return Icons.check_circle;
+      case 'CANCELLED':
+        return Icons.cancel;
+      default:
+        return Icons.receipt;
+    }
+  }
+
+  Color _getPaymentStatusColor(String status) {
+    switch (status) {
+      case 'UNPAID':
+        return AppTheme.error;
+      case 'PARTIAL':
+        return AppTheme.warning;
+      case 'PAID':
+        return AppTheme.success;
+      default:
+        return AppTheme.textSecondary;
+    }
+  }
+
+  String _formatDate(String dateStr) {
+    try {
+      final date = DateTime.parse(dateStr);
+      return DateFormat('dd MMM yyyy').format(date);
+    } catch (e) {
+      return dateStr;
+    }
   }
 }

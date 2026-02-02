@@ -1,7 +1,7 @@
 """
-Invoicing app models - With Dynamic Balance Calculation
-Date: 2026-01-27
-PERMANENT FIX: Added dynamic balance property
+Invoicing app models - With Dynamic Balance Calculation + DISCOUNT SUPPORT
+Date: 2026-02-02
+UPDATED: Added discount field to InvoiceItem + Added PRODUCT to item_type choices
 """
 
 from django.db import models
@@ -88,29 +88,65 @@ class Invoice(models.Model):
         return f"{self.invoice_number} - {self.customer.name}"
     
     def save(self, *args, **kwargs):
-        if not self.invoice_number:
-            year_month = timezone.now().strftime('%Y%m')
-            last_invoice = Invoice.objects.filter(
-                tenant=self.tenant,
-                invoice_number__startswith=f'INV-{year_month}'
-            ).order_by('-invoice_number').first()
+            """
+            Auto-generate FY-based invoice number if not provided
+            Format: INV[FY]-[SEQ]
             
-            if last_invoice:
-                last_num = int(last_invoice.invoice_number.split('-')[-1])
-                new_num = last_num + 1
-            else:
-                new_num = 1
+            Financial Year in India: April 1 to March 31
+            Example:
+            - Feb 2026 → FY 2025-26 → INV2526-1
+            - Apr 2026 → FY 2026-27 → INV2627-1
+            """
+            if not self.invoice_number:
+                from django.utils import timezone
+                
+                today = timezone.now().date()
+                
+                # Calculate Financial Year
+                if today.month >= 4:  # April or later
+                    fy_start = today.year
+                    fy_end = today.year + 1
+                else:  # January to March
+                    fy_start = today.year - 1
+                    fy_end = today.year
+                
+                # Format: Last 2 digits of each year (e.g., 2526 for 2025-26)
+                fy_code = f"{fy_start % 100}{fy_end % 100}"
+                
+                # Get last invoice for this FY
+                last_invoice = Invoice.objects.filter(
+                    tenant=self.tenant,
+                    invoice_number__startswith=f'INV{fy_code}-'
+                ).order_by('-invoice_number').first()
+                
+                # Calculate next sequence number
+                if last_invoice:
+                    # Extract sequence from "INV2526-15" → 15
+                    try:
+                        last_seq = int(last_invoice.invoice_number.split('-')[-1])
+                        new_seq = last_seq + 1
+                    except (ValueError, IndexError):
+                        new_seq = 1
+                else:
+                    # First invoice of this FY
+                    new_seq = 1
+                
+                # Generate invoice number: INV2526-1
+                self.invoice_number = f'INV{fy_code}-{new_seq}'
             
-            self.invoice_number = f'INV-{year_month}-{new_num:05d}'
-        
-        if self.billing_state and hasattr(self.tenant, 'state'):
-            self.tax_type = 'INTRASTATE' if self.billing_state == self.tenant.state else 'INTERSTATE'
-        
-        if not hasattr(self.tenant, 'gst_enabled') or not self.tenant.gst_enabled:
-            self.tax_type = 'ZERO'
-        
-        super().save(*args, **kwargs)
-    
+            # Auto-detect tax type from billing state
+            if self.billing_state and hasattr(self.tenant, 'state'):
+                if self.billing_state == self.tenant.state:
+                    self.tax_type = 'INTRASTATE'
+                else:
+                    self.tax_type = 'INTERSTATE'
+            
+            # Check if GST is enabled
+            if not hasattr(self.tenant, 'gst_enabled') or not self.tenant.gst_enabled:
+                self.tax_type = 'ZERO'
+            
+            super().save(*args, **kwargs)
+            
     def calculate_totals(self):
         """✅ FIXED: Calculate all totals dynamically including advances and refunds"""
         from financials.models import ReceiptVoucher, Payment, RefundVoucher
@@ -159,7 +195,7 @@ class Invoice(models.Model):
 
 
 class InvoiceItem(models.Model):
-    """Invoice line items"""
+    """Invoice line items - UPDATED with discount support"""
     
     invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='items')
     item = models.ForeignKey('orders.Item', on_delete=models.PROTECT, null=True, blank=True, related_name='invoice_items')
@@ -167,9 +203,10 @@ class InvoiceItem(models.Model):
     hsn_sac_code = models.CharField(max_length=20, blank=True)
     quantity = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('1.00'), validators=[MinValueValidator(Decimal('0.01'))])
     unit_price = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'), validators=[MinValueValidator(Decimal('0.00'))])
+    discount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'), validators=[MinValueValidator(Decimal('0.00'))])  # ✅ ADDED
     gst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'), validators=[MinValueValidator(Decimal('0.00'))])
     
-    ITEM_TYPE_CHOICES = [('GOODS', 'Goods'), ('SERVICE', 'Service')]
+    ITEM_TYPE_CHOICES = [('PRODUCT', 'Product'), ('SERVICE', 'Service')]  # ✅ SIMPLIFIED: Only PRODUCT and SERVICE
     item_type = models.CharField(max_length=10, choices=ITEM_TYPE_CHOICES, default='SERVICE')
     
     created_at = models.DateTimeField(auto_now_add=True)
@@ -185,7 +222,8 @@ class InvoiceItem(models.Model):
     
     @property
     def subtotal(self):
-        return self.quantity * self.unit_price
+        """Subtotal after discount: (qty × price) - discount"""
+        return (self.quantity * self.unit_price) - self.discount  # ✅ UPDATED
     
     @property
     def cgst_amount(self):

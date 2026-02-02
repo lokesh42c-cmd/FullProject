@@ -1,7 +1,7 @@
 """
-Invoicing app serializers - Invoice API serializers
-Date: 2026-01-27
-FIXED: Auto-copy items from order when creating invoice
+Invoicing app serializers - Invoice API serializers + DISCOUNT SUPPORT
+Date: 2026-02-02
+UPDATED: Added discount field to InvoiceItemSerializer
 """
 
 from rest_framework import serializers
@@ -12,7 +12,7 @@ from decimal import Decimal
 # ==================== INVOICE ITEM SERIALIZERS ====================
 
 class InvoiceItemSerializer(serializers.ModelSerializer):
-    """Invoice item serializer with calculated fields"""
+    """Invoice item serializer with calculated fields + discount support"""
     
     item_name = serializers.CharField(source='item.name', read_only=True)
     subtotal = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
@@ -26,7 +26,7 @@ class InvoiceItemSerializer(serializers.ModelSerializer):
         model = InvoiceItem
         fields = [
             'id', 'item', 'item_name', 'item_description', 'hsn_sac_code',
-            'item_type', 'quantity', 'unit_price', 'gst_rate',
+            'item_type', 'quantity', 'unit_price', 'discount', 'gst_rate',  # ✅ ADDED discount
             'subtotal', 'cgst_amount', 'sgst_amount', 'igst_amount',
             'total_tax', 'total_amount'
         ]
@@ -82,7 +82,7 @@ class InvoiceDetailSerializer(serializers.ModelSerializer):
 
 
 class InvoiceCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating/updating invoices - AUTO-COPIES ORDER ITEMS"""
+    """Serializer for creating/updating invoices - AUTO-COPIES ORDER ITEMS with discount"""
     
     items = InvoiceItemSerializer(many=True, required=False)
     
@@ -103,7 +103,7 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
         
         invoice = Invoice.objects.create(**validated_data)
         
-        # ✅ AUTO-COPY ITEMS FROM ORDER
+        # ✅ AUTO-COPY ITEMS FROM ORDER (with discount support)
         if order and not items_data:
             from orders.models import OrderItem
             
@@ -119,6 +119,11 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
                 if order_item.item and hasattr(order_item.item, 'hsn_sac_code'):
                     hsn_sac = order_item.item.hsn_sac_code or ''
                 
+                # Get discount from order item
+                discount = Decimal('0.00')
+                if hasattr(order_item, 'discount'):
+                    discount = order_item.discount or Decimal('0.00')
+                
                 InvoiceItem.objects.create(
                     invoice=invoice,
                     item=order_item.item,
@@ -126,6 +131,7 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
                     hsn_sac_code=hsn_sac,
                     quantity=order_item.quantity,
                     unit_price=order_item.unit_price,
+                    discount=discount,  # ✅ ADDED discount
                     gst_rate=gst_rate,
                     item_type='SERVICE'  # Default, can be customized
                 )

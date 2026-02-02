@@ -4,7 +4,6 @@ import 'package:tailoring_web/core/storage/token_storage.dart';
 import 'package:tailoring_web/features/auth/services/auth_service.dart';
 
 /// Authentication state provider
-/// UPDATED: Now stores complete Tenant object (from auth_service.dart)
 class AuthProvider with ChangeNotifier {
   final AuthService _authService;
 
@@ -12,19 +11,16 @@ class AuthProvider with ChangeNotifier {
   bool _isAuthenticated = false;
   String? _errorMessage;
 
-  // User info (kept as-is)
+  // User info
   int? _userId;
   String? _userEmail;
   String? _userName;
   int? _tenantId;
   String? _tenantName;
 
-  // NEW: Full tenant object for invoice creation
-  Tenant? _tenant;
-
   AuthProvider(this._authService);
 
-  // Original getters (kept as-is)
+  // Getters
   bool get isLoading => _isLoading;
   bool get isAuthenticated => _isAuthenticated;
   String? get errorMessage => _errorMessage;
@@ -34,17 +30,7 @@ class AuthProvider with ChangeNotifier {
   int? get tenantId => _tenantId;
   String? get tenantName => _tenantName;
 
-  // NEW: Additional getters for tenant info
-  Tenant? get tenant => _tenant;
-  String? get tenantState => _tenant?.state; // For tax calculation
-  String? get tenantGstin => _tenant?.gstin; // For tax calculation
-  String? get tenantCity => _tenant?.city;
-  String? get tenantAddress => _tenant?.address;
-  String? get tenantPhone => _tenant?.phoneNumber;
-  String? get tenantEmail => _tenant?.email;
-
   /// Check if user is already logged in (on app start)
-  /// UPDATED: Now reconstructs Tenant object from storage
   Future<void> checkAuthStatus() async {
     _isLoading = true;
     notifyListeners();
@@ -53,42 +39,14 @@ class AuthProvider with ChangeNotifier {
       final isLoggedIn = await TokenStorage.isLoggedIn();
 
       if (isLoggedIn) {
-        // Load user data from storage (original logic)
+        // Load user data from storage
         _userId = await TokenStorage.getUserId();
         _userEmail = await TokenStorage.getUserEmail();
         _userName = await TokenStorage.getUserName();
         _tenantId = await TokenStorage.getTenantId();
         _tenantName = await TokenStorage.getTenantName();
 
-        // NEW: Load additional tenant fields and reconstruct Tenant object
-        final tenantState = await TokenStorage.getTenantState();
-        final tenantCity = await TokenStorage.getTenantCity();
-        final tenantEmail = await TokenStorage.getTenantEmail();
-        final tenantPhone = await TokenStorage.getTenantPhone();
-        final tenantAddress = await TokenStorage.getTenantAddress();
-        final tenantPincode = await TokenStorage.getTenantPincode();
-        final tenantGstin = await TokenStorage.getTenantGstin();
-
-        // Reconstruct tenant object if we have required fields
-        if (_tenantId != null &&
-            _tenantName != null &&
-            tenantState != null &&
-            tenantCity != null) {
-          _tenant = Tenant(
-            id: _tenantId!,
-            name: _tenantName!,
-            slug: _tenantName!.toLowerCase().replaceAll(' ', '-'),
-            email: tenantEmail ?? '',
-            phoneNumber: tenantPhone ?? '',
-            city: tenantCity,
-            state: tenantState,
-            address: tenantAddress,
-            pincode: tenantPincode,
-            gstin: tenantGstin,
-          );
-        }
-
-        // Restore access token to API client (original logic)
+        // Restore access token to API client
         final accessToken = await TokenStorage.getAccessToken();
         if (accessToken != null && accessToken.isNotEmpty) {
           _authService.setAccessToken(accessToken);
@@ -108,7 +66,6 @@ class AuthProvider with ChangeNotifier {
   }
 
   /// Login with email and password
-  /// UPDATED: Now stores full Tenant object from login response
   Future<bool> login({required String email, required String password}) async {
     _isLoading = true;
     _errorMessage = null;
@@ -120,34 +77,23 @@ class AuthProvider with ChangeNotifier {
         password: password,
       );
 
-      // NEW: Get full tenant object from login response
-      _tenant = loginResponse.user.tenant;
-
-      // Save tokens and user info (original + new tenant fields)
+      // Save tokens and user info
       await TokenStorage.saveAuthData(
         accessToken: loginResponse.tokens.access,
         refreshToken: loginResponse.tokens.refresh,
         userId: loginResponse.user.id,
         userEmail: loginResponse.user.email,
         userName: loginResponse.user.name,
-        tenantId: _tenant!.id,
-        tenantName: _tenant!.name,
-        // NEW: Save additional tenant fields
-        tenantState: _tenant!.state,
-        tenantCity: _tenant!.city,
-        tenantEmail: _tenant!.email,
-        tenantPhone: _tenant!.phoneNumber,
-        tenantAddress: _tenant?.address,
-        tenantPincode: _tenant?.pincode,
-        tenantGstin: _tenant?.gstin,
+        tenantId: loginResponse.user.tenant.id,
+        tenantName: loginResponse.user.tenant.name,
       );
 
-      // Update state (original logic)
+      // Update state
       _userId = loginResponse.user.id;
       _userEmail = loginResponse.user.email;
       _userName = loginResponse.user.name;
-      _tenantId = _tenant!.id;
-      _tenantName = _tenant!.name;
+      _tenantId = loginResponse.user.tenant.id;
+      _tenantName = loginResponse.user.tenant.name;
       _isAuthenticated = true;
 
       _isLoading = false;
@@ -170,7 +116,6 @@ class AuthProvider with ChangeNotifier {
   }
 
   /// Register new user
-  /// UPDATED: Now stores full Tenant object from registration response
   Future<bool> register({
     required String businessName,
     required String ownerName,
@@ -191,9 +136,6 @@ class AuthProvider with ChangeNotifier {
         password: password,
       );
 
-      // NEW: Get full tenant object from registration response
-      _tenant = loginResponse.user.tenant;
-
       // Save tokens and user info (same as login)
       await TokenStorage.saveAuthData(
         accessToken: loginResponse.tokens.access,
@@ -201,24 +143,16 @@ class AuthProvider with ChangeNotifier {
         userId: loginResponse.user.id,
         userEmail: loginResponse.user.email,
         userName: loginResponse.user.name,
-        tenantId: _tenant!.id,
-        tenantName: _tenant!.name,
-        // NEW: Save additional tenant fields
-        tenantState: _tenant!.state,
-        tenantCity: _tenant!.city,
-        tenantEmail: _tenant!.email,
-        tenantPhone: _tenant!.phoneNumber,
-        tenantAddress: _tenant?.address,
-        tenantPincode: _tenant?.pincode,
-        tenantGstin: _tenant?.gstin,
+        tenantId: loginResponse.user.tenant.id,
+        tenantName: loginResponse.user.tenant.name,
       );
 
-      // Update state (original logic)
+      // Update state
       _userId = loginResponse.user.id;
       _userEmail = loginResponse.user.email;
       _userName = loginResponse.user.name;
-      _tenantId = _tenant!.id;
-      _tenantName = _tenant!.name;
+      _tenantId = loginResponse.user.tenant.id;
+      _tenantName = loginResponse.user.tenant.name;
       _isAuthenticated = true;
 
       _isLoading = false;
@@ -241,7 +175,6 @@ class AuthProvider with ChangeNotifier {
   }
 
   /// Logout
-  /// UPDATED: Now also clears tenant object
   Future<void> logout() async {
     _authService.logout();
     await TokenStorage.clearAll();
@@ -252,7 +185,6 @@ class AuthProvider with ChangeNotifier {
     _userName = null;
     _tenantId = null;
     _tenantName = null;
-    _tenant = null; // NEW: Clear tenant object
     _errorMessage = null;
 
     notifyListeners();
