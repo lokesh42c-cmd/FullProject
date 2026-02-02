@@ -8,8 +8,6 @@ import 'package:tailoring_web/features/invoices/providers/invoice_provider.dart'
 import 'package:tailoring_web/features/invoices/screens/create_invoice_screen.dart';
 import 'package:tailoring_web/features/invoices/screens/invoice_detail_screen.dart';
 
-/// Invoice List Screen - COMPLETE VERSION
-/// Shows all invoices with filters, search, and navigation
 class InvoiceListScreen extends StatefulWidget {
   const InvoiceListScreen({super.key});
 
@@ -54,7 +52,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
   Widget _buildHeader() {
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: AppTheme.backgroundWhite,
         border: Border(bottom: BorderSide(color: AppTheme.borderLight)),
       ),
@@ -114,7 +112,6 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
       ),
       child: Row(
         children: [
-          // Search
           Expanded(
             flex: 2,
             child: TextField(
@@ -123,14 +120,10 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                 hintText: 'Search by invoice number, customer...',
                 prefixIcon: Icon(Icons.search, size: 18),
               ),
-              onChanged: (value) {
-                // Implement search
-              },
+              onChanged: (value) {},
             ),
           ),
           const SizedBox(width: 16),
-
-          // Status Filter
           Expanded(
             child: DropdownButtonFormField<String>(
               value: _selectedStatus,
@@ -138,15 +131,12 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                 labelText: 'Status',
                 prefixIcon: Icon(Icons.filter_list, size: 18),
               ),
-              items: [
-                const DropdownMenuItem(value: null, child: Text('All')),
-                const DropdownMenuItem(value: 'DRAFT', child: Text('Draft')),
-                const DropdownMenuItem(value: 'ISSUED', child: Text('Issued')),
-                const DropdownMenuItem(value: 'PAID', child: Text('Paid')),
-                const DropdownMenuItem(
-                  value: 'CANCELLED',
-                  child: Text('Cancelled'),
-                ),
+              items: const [
+                DropdownMenuItem(value: null, child: Text('All')),
+                DropdownMenuItem(value: 'DRAFT', child: Text('Draft')),
+                DropdownMenuItem(value: 'ISSUED', child: Text('Issued')),
+                DropdownMenuItem(value: 'PAID', child: Text('Paid')),
+                DropdownMenuItem(value: 'CANCELLED', child: Text('Cancelled')),
               ],
               onChanged: (value) {
                 setState(() => _selectedStatus = value);
@@ -156,8 +146,6 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
             ),
           ),
           const SizedBox(width: 16),
-
-          // Clear Filters
           OutlinedButton.icon(
             onPressed: () {
               setState(() {
@@ -167,7 +155,6 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
               context.read<InvoiceProvider>().clearFilters();
               context.read<InvoiceProvider>().fetchInvoices(refresh: true);
             },
-
             icon: const Icon(Icons.clear, size: 18),
             label: const Text('Clear'),
           ),
@@ -220,27 +207,6 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                   'No invoices found',
                   style: AppTheme.heading3.copyWith(color: AppTheme.textMuted),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  'Create your first invoice to get started',
-                  style: AppTheme.bodySmall.copyWith(color: AppTheme.textMuted),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton.icon(
-                  onPressed: () async {
-                    final result = await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const CreateInvoiceScreen(),
-                      ),
-                    );
-                    if (result == true && mounted) {
-                      provider.fetchInvoices(refresh: true);
-                    }
-                  },
-                  icon: const Icon(Icons.add),
-                  label: const Text('Create Invoice'),
-                ),
               ],
             ),
           );
@@ -280,18 +246,22 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
             flex: 2,
             child: Text('INVOICE', style: AppTheme.tableHeader),
           ),
+          Expanded(flex: 2, child: Text('ORDER', style: AppTheme.tableHeader)),
           Expanded(
             flex: 2,
             child: Text('CUSTOMER', style: AppTheme.tableHeader),
           ),
-          Expanded(flex: 2, child: Text('DATE', style: AppTheme.tableHeader)),
-          Expanded(flex: 2, child: Text('AMOUNT', style: AppTheme.tableHeader)),
-          Expanded(flex: 2, child: Text('STATUS', style: AppTheme.tableHeader)),
+          Expanded(flex: 2, child: Text('TOTAL', style: AppTheme.tableHeader)),
           Expanded(
             flex: 2,
-            child: Text('PAYMENT', style: AppTheme.tableHeader),
-          ),
-          SizedBox(width: 100),
+            child: Text('PAID', style: AppTheme.tableHeader),
+          ), // Column added
+          Expanded(
+            flex: 2,
+            child: Text('BALANCE', style: AppTheme.tableHeader),
+          ), // Column added
+          Expanded(flex: 2, child: Text('STATUS', style: AppTheme.tableHeader)),
+          SizedBox(width: 80),
         ],
       ),
     );
@@ -317,15 +287,37 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
         ),
         child: Row(
           children: [
-            // Invoice Number
+            // Invoice
+            Expanded(
+              flex: 2,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    invoice.invoiceNumber,
+                    style: AppTheme.bodyMedium.copyWith(
+                      fontWeight: AppTheme.fontSemibold,
+                      color: AppTheme.primaryBlue,
+                    ),
+                  ),
+                  Text(
+                    DateFormat(
+                      'dd MMM yyyy',
+                    ).format(DateTime.parse(invoice.invoiceDate)),
+                    style: AppTheme.bodyXSmall.copyWith(
+                      color: AppTheme.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Order Number
             Expanded(
               flex: 2,
               child: Text(
-                invoice.invoiceNumber,
-                style: AppTheme.bodyMedium.copyWith(
-                  fontWeight: AppTheme.fontSemibold,
-                  color: AppTheme.primaryBlue,
-                ),
+                invoice.orderNumber ?? 'Walk-in',
+                style: AppTheme.bodySmall,
               ),
             ),
 
@@ -338,43 +330,52 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
               ),
             ),
 
-            // Date
-            Expanded(
-              flex: 2,
-              child: Text(
-                DateFormat(
-                  'dd MMM yyyy',
-                ).format(DateTime.parse(invoice.invoiceDate)),
-                style: AppTheme.bodySmall,
-              ),
-            ),
-
-            // Amount
+            // Grand Total
             Expanded(
               flex: 2,
               child: Text(
                 '₹${invoice.grandTotal.toStringAsFixed(2)}',
-                style: AppTheme.bodyMedium.copyWith(
+                style: AppTheme.bodySmall,
+              ),
+            ),
+
+            // Paid Amount - Pulling from invoice.totalPaid
+            Expanded(
+              flex: 2,
+              child: Text(
+                '₹${invoice.totalPaid.toStringAsFixed(2)}',
+                style: AppTheme.bodySmall.copyWith(
+                  color: AppTheme.success,
                   fontWeight: AppTheme.fontSemibold,
                 ),
               ),
             ),
 
-            // Status
-            Expanded(flex: 2, child: _buildStatusBadge(invoice.status)),
+            // Remaining Balance - Pulling from invoice.remainingBalance
+            Expanded(
+              flex: 2,
+              child: Text(
+                '₹${invoice.remainingBalance.toStringAsFixed(2)}',
+                style: AppTheme.bodySmall.copyWith(
+                  color: invoice.remainingBalance > 0
+                      ? AppTheme.danger
+                      : AppTheme.success,
+                  fontWeight: AppTheme.fontSemibold,
+                ),
+              ),
+            ),
 
-            // Payment Status
-            Expanded(flex: 2, child: _buildPaymentBadge(invoice.paymentStatus)),
+            // Status Badge
+            Expanded(flex: 2, child: _buildStatusBadge(invoice.status)),
 
             // Actions
             SizedBox(
-              width: 100,
+              width: 80,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   IconButton(
                     icon: const Icon(Icons.visibility, size: 18),
-                    tooltip: 'View Details',
                     onPressed: () {
                       Navigator.push(
                         context,
@@ -419,43 +420,13 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
         color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(4),
       ),
-      child: Text(
-        status,
-        style: AppTheme.bodyXSmall.copyWith(
-          color: color,
-          fontWeight: AppTheme.fontSemibold,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPaymentBadge(String paymentStatus) {
-    Color color;
-    switch (paymentStatus) {
-      case 'UNPAID':
-        color = AppTheme.danger;
-        break;
-      case 'PARTIAL':
-        color = AppTheme.warning;
-        break;
-      case 'PAID':
-        color = AppTheme.success;
-        break;
-      default:
-        color = AppTheme.textMuted;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        paymentStatus,
-        style: AppTheme.bodyXSmall.copyWith(
-          color: color,
-          fontWeight: AppTheme.fontSemibold,
+      child: Center(
+        child: Text(
+          status,
+          style: AppTheme.bodyXSmall.copyWith(
+            color: color,
+            fontWeight: AppTheme.fontSemibold,
+          ),
         ),
       ),
     );
