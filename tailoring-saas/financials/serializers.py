@@ -5,7 +5,7 @@ PERMANENT FIX: Dynamic validation + flexible field names
 """
 
 from rest_framework import serializers
-from .models import ReceiptVoucher, Payment, RefundVoucher
+from .models import ReceiptVoucher, Payment, RefundVoucher, PaymentRefund
 from decimal import Decimal
 from datetime import datetime
 
@@ -100,23 +100,6 @@ class PaymentListSerializer(serializers.ModelSerializer):
             'id', 'payment_number', 'payment_date', 'invoice', 'invoice_number',
             'customer_name', 'amount', 'payment_mode', 'payment_mode_display',
             'deposited_to_bank', 'created_at'
-        ]
-
-
-class PaymentDetailSerializer(serializers.ModelSerializer):
-    """Detailed payment serializer"""
-    
-    invoice_number = serializers.CharField(source='invoice.invoice_number', read_only=True)
-    customer_name = serializers.CharField(source='invoice.customer.name', read_only=True)
-    payment_mode_display = serializers.CharField(source='get_payment_mode_display', read_only=True)
-    
-    class Meta:
-        model = Payment
-        fields = [
-            'id', 'payment_number', 'payment_date', 'invoice', 'invoice_number',
-            'customer_name', 'amount', 'payment_mode', 'payment_mode_display',
-            'transaction_reference', 'deposited_to_bank', 'deposit_date',
-            'notes', 'created_by', 'created_at', 'updated_at'
         ]
 
 
@@ -234,3 +217,136 @@ class RefundVoucherCreateSerializer(serializers.ModelSerializer):
             except ReceiptVoucher.DoesNotExist:
                 pass
         return value
+
+
+# ==================== PAYMENT REFUND SERIALIZERS ====================
+
+class PaymentRefundListSerializer(serializers.ModelSerializer):
+    """Lightweight payment refund serializer for lists"""
+    
+    payment_number = serializers.CharField(source='payment.payment_number', read_only=True)
+    invoice_number = serializers.CharField(source='invoice.invoice_number', read_only=True)
+    customer_name = serializers.CharField(source='customer.name', read_only=True)
+    refund_mode_display = serializers.CharField(source='refund_mode_display', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    
+    class Meta:
+        model = PaymentRefund
+        fields = [
+            'id', 'refund_number', 'refund_date', 'payment', 'payment_number',
+            'invoice', 'invoice_number', 'customer', 'customer_name',
+            'refund_amount', 'refund_mode', 'refund_mode_display',
+            'created_by_name', 'created_at'
+        ]
+
+
+class PaymentRefundDetailSerializer(serializers.ModelSerializer):
+    """Detailed payment refund serializer"""
+    
+    payment_number = serializers.CharField(source='payment.payment_number', read_only=True)
+    invoice_number = serializers.CharField(source='invoice.invoice_number', read_only=True)
+    customer_name = serializers.CharField(source='customer.name', read_only=True)
+    refund_mode_display = serializers.CharField(source='refund_mode_display', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    
+    class Meta:
+        model = PaymentRefund
+        fields = [
+            'id', 'refund_number', 'refund_date', 'payment', 'payment_number',
+            'invoice', 'invoice_number', 'customer', 'customer_name',
+            'refund_amount', 'refund_mode', 'refund_mode_display',
+            'transaction_reference', 'reason', 'notes',
+            'created_by', 'created_by_name', 'created_at', 'updated_at'
+        ]
+
+
+class PaymentRefundCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating payment refunds"""
+    
+    class Meta:
+        model = PaymentRefund
+        fields = [
+            'payment', 'refund_date', 'refund_amount', 'refund_mode',
+            'transaction_reference', 'reason', 'notes'
+        ]
+    
+    def validate_refund_amount(self, value):
+        """Validate refund amount"""
+        if value <= 0:
+            raise serializers.ValidationError("Refund amount must be greater than zero")
+        return value
+    
+    def validate_reason(self, value):
+        """Validate reason is provided"""
+        if not value or not value.strip():
+            raise serializers.ValidationError("Reason for refund is required")
+        if len(value.strip()) < 10:
+            raise serializers.ValidationError("Reason must be at least 10 characters")
+        return value.strip()
+    
+    def validate(self, data):
+        """Cross-field validation"""
+        payment = data.get('payment')
+        refund_amount = data.get('refund_amount')
+        
+        if payment and refund_amount:
+            # Check if refund amount exceeds available amount
+            existing_refunds = PaymentRefund.objects.filter(payment=payment)
+            
+            # Exclude current instance if updating
+            if self.instance:
+                existing_refunds = existing_refunds.exclude(id=self.instance.id)
+            
+            total_refunded = sum(r.refund_amount for r in existing_refunds)
+            max_refundable = payment.amount - total_refunded
+            
+            if refund_amount > max_refundable:
+                raise serializers.ValidationError({
+                    'refund_amount': f"Refund amount (₹{refund_amount}) exceeds available amount (₹{max_refundable})"
+                })
+        
+        return data
+    
+    def create(self, validated_data):
+        """Create payment refund with auto-set fields"""
+        # Set tenant from request user
+        request = self.context.get('request')
+        if request and hasattr(request, 'user'):
+            validated_data['tenant'] = request.user.tenant
+            validated_data['created_by'] = request.user
+        
+        # Auto-set invoice and customer from payment
+        payment = validated_data.get('payment')
+        if payment:
+            validated_data['invoice'] = payment.invoice
+            validated_data['customer'] = payment.invoice.customer
+        
+        return super().create(validated_data)
+
+
+# ==================== UPDATED PAYMENT SERIALIZERS ====================
+# Add refund information to existing Payment serializers
+
+class PaymentDetailSerializer(serializers.ModelSerializer):
+    """Detailed payment serializer with refund information"""
+    
+    invoice_number = serializers.CharField(source='invoice.invoice_number', read_only=True)
+    customer_name = serializers.CharField(source='invoice.customer.name', read_only=True)
+    payment_mode_display = serializers.CharField(source='get_payment_mode_display', read_only=True)
+    
+    # ✅ Add refund-related fields
+    total_refunded = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    refundable_amount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    is_fully_refunded = serializers.BooleanField(read_only=True)
+    refunds = PaymentRefundListSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = Payment
+        fields = [
+            'id', 'payment_number', 'payment_date', 'invoice', 'invoice_number',
+            'customer_name', 'amount', 'payment_mode', 'payment_mode_display',
+            'transaction_reference', 'deposited_to_bank', 'deposit_date',
+            'notes', 'created_by', 'created_at', 'updated_at',
+            # ✅ New refund fields
+            'total_refunded', 'refundable_amount', 'is_fully_refunded', 'refunds'
+        ]

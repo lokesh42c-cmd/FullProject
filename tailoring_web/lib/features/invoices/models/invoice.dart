@@ -153,12 +153,31 @@ class Invoice {
   }
 
   Map<String, dynamic> toJson() {
+    // Calculate totals from items if they exist
+    double calculatedSubtotal = 0.0;
+    double calculatedCgst = 0.0;
+    double calculatedSgst = 0.0;
+    double calculatedIgst = 0.0;
+
+    if (items != null && items!.isNotEmpty) {
+      for (var item in items!) {
+        calculatedSubtotal += item.calculateSubtotal();
+        calculatedCgst += item.calculateCgst(taxType);
+        calculatedSgst += item.calculateSgst(taxType);
+        calculatedIgst += item.calculateIgst(taxType);
+      }
+    }
+
+    final calculatedGrandTotal =
+        calculatedSubtotal + calculatedCgst + calculatedSgst + calculatedIgst;
+
     return {
       if (id != null) 'id': id,
       'customer': customer,
       if (order != null) 'order': order,
       'invoice_date': invoiceDate,
       'status': status,
+      'tax_type': taxType,
       'billing_name': billingName,
       'billing_address': billingAddress,
       if (billingCity != null) 'billing_city': billingCity,
@@ -173,7 +192,15 @@ class Invoice {
       if (notes != null) 'notes': notes,
       if (termsAndConditions != null)
         'terms_and_conditions': termsAndConditions,
-      if (items != null) 'items': items!.map((item) => item.toJson()).toList(),
+      // Send calculated totals
+      'subtotal': calculatedSubtotal,
+      'total_cgst': calculatedCgst,
+      'total_sgst': calculatedSgst,
+      'total_igst': calculatedIgst,
+      'grand_total': calculatedGrandTotal,
+      // Send items with calculated amounts
+      if (items != null)
+        'items': items!.map((item) => item.toJson(taxType: taxType)).toList(),
     };
   }
 
@@ -277,7 +304,7 @@ class InvoiceItem {
   final String itemType; // GOODS, SERVICE
   final double quantity;
   final double unitPrice;
-  final double discount; // ✅ ADDED: Discount field
+  final double discount;
   final double gstRate;
 
   // Calculated fields (read-only from backend)
@@ -297,7 +324,7 @@ class InvoiceItem {
     this.itemType = 'SERVICE',
     this.quantity = 1.0,
     this.unitPrice = 0.0,
-    this.discount = 0.0, // ✅ ADDED: Default value
+    this.discount = 0.0,
     this.gstRate = 0.0,
     this.subtotal,
     this.cgstAmount,
@@ -317,7 +344,7 @@ class InvoiceItem {
       itemType: json['item_type'] ?? 'SERVICE',
       quantity: _parseDouble(json['quantity']),
       unitPrice: _parseDouble(json['unit_price']),
-      discount: _parseDouble(json['discount']), // ✅ ADDED
+      discount: _parseDouble(json['discount']),
       gstRate: _parseDouble(json['gst_rate']),
       subtotal: _parseDouble(json['subtotal']),
       cgstAmount: _parseDouble(json['cgst_amount']),
@@ -328,7 +355,10 @@ class InvoiceItem {
     );
   }
 
-  Map<String, dynamic> toJson() {
+  Map<String, dynamic> toJson({String? taxType}) {
+    // Calculate amounts if taxType is provided
+    final calculatedSubtotal = calculateSubtotal();
+
     return {
       if (id != null) 'id': id,
       if (item != null) 'item': item,
@@ -337,8 +367,20 @@ class InvoiceItem {
       'item_type': itemType,
       'quantity': quantity,
       'unit_price': unitPrice,
-      'discount': discount, // ✅ ADDED
+      'discount': discount,
       'gst_rate': gstRate,
+      // Include calculated amounts if taxType provided
+      if (taxType != null) ...{
+        'subtotal': calculatedSubtotal,
+        'cgst_amount': calculateCgst(taxType),
+        'sgst_amount': calculateSgst(taxType),
+        'igst_amount': calculateIgst(taxType),
+        'total_tax':
+            calculateCgst(taxType) +
+            calculateSgst(taxType) +
+            calculateIgst(taxType),
+        'total_amount': calculateTotalAmount(taxType),
+      },
     };
   }
 
@@ -352,7 +394,7 @@ class InvoiceItem {
 
   // Client-side calculation helpers - UPDATED to include discount
   double calculateSubtotal() {
-    return (quantity * unitPrice) - discount; // ✅ UPDATED: Subtract discount
+    return (quantity * unitPrice) - discount;
   }
 
   double calculateCgst(String taxType) {
@@ -399,7 +441,7 @@ class InvoiceItem {
     String? itemType,
     double? quantity,
     double? unitPrice,
-    double? discount, // ✅ ADDED
+    double? discount,
     double? gstRate,
   }) {
     return InvoiceItem(
@@ -411,7 +453,7 @@ class InvoiceItem {
       itemType: itemType ?? this.itemType,
       quantity: quantity ?? this.quantity,
       unitPrice: unitPrice ?? this.unitPrice,
-      discount: discount ?? this.discount, // ✅ ADDED
+      discount: discount ?? this.discount,
       gstRate: gstRate ?? this.gstRate,
     );
   }

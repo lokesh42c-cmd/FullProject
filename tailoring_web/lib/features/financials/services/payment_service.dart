@@ -2,13 +2,13 @@ import 'package:tailoring_web/core/api/api_client.dart';
 import '../models/receipt_voucher.dart';
 import '../models/refund_voucher.dart';
 import '../models/invoice_payment.dart';
+import '../models/payment_refund.dart';
 
 class PaymentService {
   final ApiClient _apiClient = ApiClient();
 
   // ==================== RECEIPT VOUCHERS (Advances) ====================
 
-  /// Create a new receipt voucher (advance payment)
   Future<ReceiptVoucher> createReceiptVoucher(ReceiptVoucher voucher) async {
     try {
       final response = await _apiClient.post(
@@ -22,28 +22,22 @@ class PaymentService {
     }
   }
 
-  /// Get all receipt vouchers for an order
   Future<List<ReceiptVoucher>> getReceiptVouchersByOrder(int orderId) async {
     try {
       final response = await _apiClient.get(
         'financials/receipts/',
         queryParameters: {'order': orderId},
       );
-
-      // Handle paginated response {count, results}
       if (response.data is Map && response.data['results'] != null) {
         return (response.data['results'] as List)
             .map((json) => ReceiptVoucher.fromJson(json))
             .toList();
       }
-
-      // Handle direct list response
       if (response.data is List) {
         return (response.data as List)
             .map((json) => ReceiptVoucher.fromJson(json))
             .toList();
       }
-
       return [];
     } catch (e) {
       print('Error fetching receipt vouchers: $e');
@@ -51,7 +45,6 @@ class PaymentService {
     }
   }
 
-  /// Get a single receipt voucher by ID
   Future<ReceiptVoucher> getReceiptVoucherById(int id) async {
     try {
       final response = await _apiClient.get('financials/receipts/$id/');
@@ -62,7 +55,6 @@ class PaymentService {
     }
   }
 
-  /// Delete a receipt voucher
   Future<void> deleteReceiptVoucher(int id) async {
     try {
       await _apiClient.delete('financials/receipts/$id/');
@@ -72,11 +64,9 @@ class PaymentService {
     }
   }
 
-  /// Get unadjusted receipt vouchers (not yet applied to invoices)
   Future<List<ReceiptVoucher>> getUnadjustedReceiptVouchers() async {
     try {
       final response = await _apiClient.get('financials/receipts/unadjusted/');
-
       if (response.data is List) {
         return (response.data as List)
             .map((json) => ReceiptVoucher.fromJson(json))
@@ -91,7 +81,6 @@ class PaymentService {
 
   // ==================== INVOICE PAYMENTS ====================
 
-  /// Create a new payment against invoice
   Future<InvoicePayment> createInvoicePayment(InvoicePayment payment) async {
     try {
       final response = await _apiClient.post(
@@ -105,7 +94,6 @@ class PaymentService {
     }
   }
 
-  /// Get all payments for an invoice
   Future<List<InvoicePayment>> getInvoicePaymentsByInvoice(
     int invoiceId,
   ) async {
@@ -114,14 +102,11 @@ class PaymentService {
         'financials/payments/',
         queryParameters: {'invoice': invoiceId},
       );
-
-      // Handle paginated response
       if (response.data is Map && response.data['results'] != null) {
         return (response.data['results'] as List)
             .map((json) => InvoicePayment.fromJson(json))
             .toList();
       }
-
       if (response.data is List) {
         return (response.data as List)
             .map((json) => InvoicePayment.fromJson(json))
@@ -134,21 +119,17 @@ class PaymentService {
     }
   }
 
-  /// Get all payments for an order (via invoices)
   Future<List<InvoicePayment>> getInvoicePaymentsByOrder(int orderId) async {
     try {
       final response = await _apiClient.get(
         'financials/payments/',
         queryParameters: {'invoice__order': orderId},
       );
-
-      // Handle paginated response
       if (response.data is Map && response.data['results'] != null) {
         return (response.data['results'] as List)
             .map((json) => InvoicePayment.fromJson(json))
             .toList();
       }
-
       if (response.data is List) {
         return (response.data as List)
             .map((json) => InvoicePayment.fromJson(json))
@@ -161,7 +142,6 @@ class PaymentService {
     }
   }
 
-  /// Get a single payment by ID
   Future<InvoicePayment> getInvoicePaymentById(int id) async {
     try {
       final response = await _apiClient.get('financials/payments/$id/');
@@ -172,7 +152,6 @@ class PaymentService {
     }
   }
 
-  /// Delete a payment
   Future<void> deleteInvoicePayment(int id) async {
     try {
       await _apiClient.delete('financials/payments/$id/');
@@ -184,7 +163,6 @@ class PaymentService {
 
   // ==================== REFUND VOUCHERS ====================
 
-  /// Create a new refund voucher
   Future<RefundVoucher> createRefundVoucher(RefundVoucher refund) async {
     try {
       final response = await _apiClient.post(
@@ -198,7 +176,6 @@ class PaymentService {
     }
   }
 
-  /// Get all refund vouchers for a receipt voucher
   Future<List<RefundVoucher>> getRefundVouchersByReceipt(
     int receiptVoucherId,
   ) async {
@@ -207,14 +184,11 @@ class PaymentService {
         'financials/refunds/',
         queryParameters: {'receipt_voucher': receiptVoucherId},
       );
-
-      // Handle paginated response
       if (response.data is Map && response.data['results'] != null) {
         return (response.data['results'] as List)
             .map((json) => RefundVoucher.fromJson(json))
             .toList();
       }
-
       if (response.data is List) {
         return (response.data as List)
             .map((json) => RefundVoucher.fromJson(json))
@@ -227,7 +201,6 @@ class PaymentService {
     }
   }
 
-  /// Get all refund vouchers for a customer
   Future<List<RefundVoucher>> getRefundVouchersByCustomer(
     int customerId,
   ) async {
@@ -236,14 +209,11 @@ class PaymentService {
         'financials/refunds/',
         queryParameters: {'customer': customerId},
       );
-
-      // Handle paginated response
       if (response.data is Map && response.data['results'] != null) {
         return (response.data['results'] as List)
             .map((json) => RefundVoucher.fromJson(json))
             .toList();
       }
-
       if (response.data is List) {
         return (response.data as List)
             .map((json) => RefundVoucher.fromJson(json))
@@ -256,13 +226,144 @@ class PaymentService {
     }
   }
 
-  /// Get a single refund voucher by ID
   Future<RefundVoucher> getRefundVoucherById(int id) async {
     try {
       final response = await _apiClient.get('financials/refunds/$id/');
       return RefundVoucher.fromJson(response.data);
     } catch (e) {
       print('Error fetching refund voucher: $e');
+      rethrow;
+    }
+  }
+
+  // ==================== PAYMENT REFUNDS (Invoice Payment Refunds) ====================
+
+  Future<PaymentRefund> createPaymentRefund(PaymentRefund refund) async {
+    try {
+      final response = await _apiClient.post(
+        'financials/payment-refunds/',
+        data: refund.toJson(),
+      );
+      return PaymentRefund.fromJson(response.data);
+    } catch (e) {
+      print('Error creating payment refund: $e');
+      rethrow;
+    }
+  }
+
+  Future<List<PaymentRefund>> getPaymentRefundsByInvoice(int invoiceId) async {
+    try {
+      final response = await _apiClient.get(
+        'financials/payment-refunds/',
+        queryParameters: {'invoice_id': invoiceId},
+      );
+      if (response.data is Map && response.data['results'] != null) {
+        return (response.data['results'] as List)
+            .map((json) => PaymentRefund.fromJson(json))
+            .toList();
+      }
+      if (response.data is List) {
+        return (response.data as List)
+            .map((json) => PaymentRefund.fromJson(json))
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      print('Error fetching payment refunds by invoice: $e');
+      rethrow;
+    }
+  }
+
+  Future<List<PaymentRefund>> getPaymentRefundsByPayment(int paymentId) async {
+    try {
+      final response = await _apiClient.get(
+        'financials/payment-refunds/',
+        queryParameters: {'payment_id': paymentId},
+      );
+      if (response.data is Map && response.data['results'] != null) {
+        return (response.data['results'] as List)
+            .map((json) => PaymentRefund.fromJson(json))
+            .toList();
+      }
+      if (response.data is List) {
+        return (response.data as List)
+            .map((json) => PaymentRefund.fromJson(json))
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      print('Error fetching payment refunds by payment: $e');
+      rethrow;
+    }
+  }
+
+  Future<PaymentRefund> getPaymentRefundById(int id) async {
+    try {
+      final response = await _apiClient.get('financials/payment-refunds/$id/');
+      return PaymentRefund.fromJson(response.data);
+    } catch (e) {
+      print('Error fetching payment refund: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deletePaymentRefund(int id) async {
+    try {
+      await _apiClient.delete('financials/payment-refunds/$id/');
+    } catch (e) {
+      print('Error deleting payment refund: $e');
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> getPaymentRefundSummaryByInvoice(
+    int invoiceId,
+  ) async {
+    try {
+      final response = await _apiClient.get(
+        'financials/payment-refunds/by_invoice/',
+        queryParameters: {'invoice_id': invoiceId},
+      );
+      if (response.data is Map) {
+        return {
+          'refunds':
+              (response.data['refunds'] as List?)
+                  ?.map((json) => PaymentRefund.fromJson(json))
+                  .toList() ??
+              [],
+          'total_refunded': response.data['total_refunded'] ?? 0.0,
+          'count': response.data['count'] ?? 0,
+        };
+      }
+      return {'refunds': [], 'total_refunded': 0.0, 'count': 0};
+    } catch (e) {
+      print('Error fetching payment refund summary: $e');
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> getPaymentRefundSummaryByPayment(
+    int paymentId,
+  ) async {
+    try {
+      final response = await _apiClient.get(
+        'financials/payment-refunds/by_payment/',
+        queryParameters: {'payment_id': paymentId},
+      );
+      if (response.data is Map) {
+        return {
+          'refunds':
+              (response.data['refunds'] as List?)
+                  ?.map((json) => PaymentRefund.fromJson(json))
+                  .toList() ??
+              [],
+          'total_refunded': response.data['total_refunded'] ?? 0.0,
+          'count': response.data['count'] ?? 0,
+        };
+      }
+      return {'refunds': [], 'total_refunded': 0.0, 'count': 0};
+    } catch (e) {
+      print('Error fetching payment refund summary: $e');
       rethrow;
     }
   }

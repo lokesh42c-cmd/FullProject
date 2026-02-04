@@ -12,6 +12,7 @@ router = DefaultRouter()
 router.register(r'receipts', views.ReceiptVoucherViewSet, basename='receipt')
 router.register(r'payments', views.PaymentViewSet, basename='payment')
 router.register(r'refunds', views.RefundVoucherViewSet, basename='refund')
+router.register(r'payment-refunds', views.PaymentRefundViewSet, basename='payment-refund')
 
 app_name = 'financials'
 

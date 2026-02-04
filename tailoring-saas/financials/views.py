@@ -11,7 +11,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q, Sum
 
 from core.permissions import CanManageOrders, CanManagePayments
-from .models import ReceiptVoucher, Payment, RefundVoucher
+from .models import ReceiptVoucher, Payment, RefundVoucher, PaymentRefund
 from .serializers import (
     ReceiptVoucherListSerializer,
     ReceiptVoucherDetailSerializer,
@@ -21,7 +21,10 @@ from .serializers import (
     PaymentCreateSerializer,
     RefundVoucherListSerializer,
     RefundVoucherDetailSerializer,
-    RefundVoucherCreateSerializer
+    RefundVoucherCreateSerializer,
+    PaymentRefundListSerializer,
+    PaymentRefundDetailSerializer,
+    PaymentRefundCreateSerializer
 )
 
 
@@ -258,3 +261,188 @@ class RefundVoucherViewSet(viewsets.ModelViewSet):
         # Return full detail using DetailSerializer
         detail_serializer = RefundVoucherDetailSerializer(serializer.instance)
         return Response(detail_serializer.data)
+
+
+# ==================== PAYMENT REFUND VIEWSET ====================
+
+class PaymentRefundViewSet(viewsets.ModelViewSet):
+    """
+    Payment Refund management with tenant isolation
+    Handles refunds for invoice payments (NOT receipt vouchers)
+    """
+    
+    permission_classes = [IsAuthenticated, CanManagePayments]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['refund_mode', 'payment', 'invoice', 'customer']
+    search_fields = ['refund_number', 'payment__payment_number', 'invoice__invoice_number', 'customer__name']
+    
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return PaymentRefundListSerializer
+        elif self.action == 'retrieve':
+            return PaymentRefundDetailSerializer
+        elif self.action in ['create', 'update', 'partial_update']:
+            return PaymentRefundCreateSerializer
+        return PaymentRefundListSerializer
+    
+    def get_queryset(self):
+        """Filter payment refunds by tenant"""
+        user = self.request.user
+        
+        if not hasattr(user, 'tenant') or user.tenant is None:
+            return PaymentRefund.objects.none()
+        
+        queryset = PaymentRefund.objects.filter(tenant=user.tenant).select_related(
+            'payment', 'invoice', 'customer', 'created_by'
+        )
+        
+        # Additional filters from query params
+        invoice_id = self.request.query_params.get('invoice_id')
+        if invoice_id:
+            queryset = queryset.filter(invoice_id=invoice_id)
+        
+        payment_id = self.request.query_params.get('payment_id')
+        if payment_id:
+            queryset = queryset.filter(payment_id=payment_id)
+        
+        customer_id = self.request.query_params.get('customer_id')
+        if customer_id:
+            queryset = queryset.filter(customer_id=customer_id)
+        
+        # Date range filters
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        if start_date:
+            queryset = queryset.filter(refund_date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(refund_date__lte=end_date)
+        
+        return queryset.order_by('-refund_date', '-created_at')
+    
+    def perform_create(self, serializer):
+        """Automatically assign tenant and created_by"""
+        serializer.save(
+            tenant=self.request.user.tenant,
+            created_by=self.request.user
+        )
+    
+    def create(self, request, *args, **kwargs):
+        """Override create to return detailed response"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        
+        # Return full detail using DetailSerializer
+        instance = serializer.instance
+        detail_serializer = PaymentRefundDetailSerializer(instance)
+        headers = self.get_success_headers(detail_serializer.data)
+        return Response(detail_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+    
+    def update(self, request, *args, **kwargs):
+        """Override update to return detailed response"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        
+        # Return full detail using DetailSerializer
+        detail_serializer = PaymentRefundDetailSerializer(serializer.instance)
+        return Response(detail_serializer.data)
+    
+    def destroy(self, request, *args, **kwargs):
+        """
+        Delete payment refund
+        Note: This will recalculate invoice totals automatically
+        """
+        instance = self.get_object()
+        invoice = instance.invoice
+        
+        # Delete the refund
+        self.perform_destroy(instance)
+        
+        # Recalculate invoice totals
+        if invoice:
+            invoice.calculate_totals()
+        
+        return Response(
+            {"message": "Payment refund deleted successfully"},
+            status=status.HTTP_204_NO_CONTENT
+        )
+    
+    @action(detail=False, methods=['get'])
+    def by_invoice(self, request):
+        """Get all refunds for a specific invoice"""
+        invoice_id = request.query_params.get('invoice_id')
+        if not invoice_id:
+            return Response(
+                {'error': 'invoice_id parameter is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        refunds = self.get_queryset().filter(invoice_id=invoice_id)
+        serializer = self.get_serializer(refunds, many=True)
+        
+        # Calculate total refunded
+        total = refunds.aggregate(total=Sum('refund_amount'))['total'] or 0
+        
+        return Response({
+            'refunds': serializer.data,
+            'total_refunded': total,
+            'count': refunds.count()
+        })
+    
+    @action(detail=False, methods=['get'])
+    def by_payment(self, request):
+        """Get all refunds for a specific payment"""
+        payment_id = request.query_params.get('payment_id')
+        if not payment_id:
+            return Response(
+                {'error': 'payment_id parameter is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        refunds = self.get_queryset().filter(payment_id=payment_id)
+        serializer = self.get_serializer(refunds, many=True)
+        
+        # Calculate total refunded for this payment
+        total = refunds.aggregate(total=Sum('refund_amount'))['total'] or 0
+        
+        return Response({
+            'refunds': serializer.data,
+            'total_refunded': total,
+            'count': refunds.count()
+        })
+    
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        """Get refund summary statistics"""
+        queryset = self.get_queryset()
+        
+        # Date filters
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        if start_date:
+            queryset = queryset.filter(refund_date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(refund_date__lte=end_date)
+        
+        # Calculate summary
+        from django.db.models import Count
+        summary = queryset.aggregate(
+            total_refunds=Sum('refund_amount'),
+            count=Count('id')
+        )
+        
+        # Group by refund mode
+        by_mode = queryset.values('refund_mode').annotate(
+            total=Sum('refund_amount'),
+            count=Count('id')
+        )
+        
+        return Response({
+            'total_refunded': summary['total_refunds'] or 0,
+            'total_count': summary['count'] or 0,
+            'by_mode': list(by_mode)
+        })
